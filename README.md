@@ -1,50 +1,54 @@
 # Tactica24
 
-**Think. Deduce. Solve.**
+**Think. Deduce. Survive.**
 
-An intellectual case-solving game. Choose a role, put on the uniform, gather evidence, combine clues, and crack the case.
+Intellectual case-solving game. Choose a role. Each role has dedicated cases. **Wrong choices can kill you.**
 
-## Play
+## Roles (each with own cases)
+
+| Role | Cases | Risk |
+|------|-------|------|
+| Detective | Shadow Vault, Silent Ward | Traps, ambushes |
+| Criminal | The Debt Mark | Betrayal, hits |
+| Police | No-Knock Night | Breach mistakes |
+| Military | Grid Seven | Kill zones |
+| Plumber | Pipe Dream | Live systems |
+| Hacker | Signal Ghost | Trace-backs |
+| Doctor | Cold Sample | Pathogen exposure |
+
+## Play (Web / Laptop)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the URL shown in the terminal.
-
-### Desktop (Electron)
+## Desktop (Electron)
 
 ```bash
-npm run electron:dev   # needs concurrently + wait-on: npm i -D concurrently wait-on
-npm run electron:pack  # package for your OS
+npm install
+npm run build
+npm run electron:pack   # installers in /release
 ```
 
-## Features
+## Mobile
 
-- **7 roles** with unique uniforms and visual character avatars
-- **5 interactive cases** with progressive unlock
-- **Evidence combination** deductions
-- Procedural sound effects
-- XP, levels, titles, persistent progress
-- Dark noir aesthetic
-- Web / PWA / Desktop ready
+1. **PWA**: Open web build in Chrome/Safari → Add to Home Screen.
+2. **Capacitor** (native Android/iOS):
+   ```bash
+   npm install @capacitor/core @capacitor/cli
+   npx cap init Tactica24 com.tactica24.game
+   npm run build && npx cap add android && npx cap add ios
+   npx cap sync && npx cap open android
+   ```
 
-## Roles
+## Mechanics
 
-Detective · Criminal · Police · Military · Plumber · Hacker · Doctor
-
-## Cases
-
-1. The Shadow Vault ★
-2. The Silent Ward ★★
-3. Pipe Dream ★★
-4. Signal Ghost ★★★
-5. Cold Circuit ★★★
-
-## Tech
-
-React 19 · TypeScript · Vite 8 · Tailwind CSS v4 · Framer Motion · Electron
+- Lives (3 start; +1 on win; -1 on death)
+- Deadly choices = instant death for that run
+- Evidence combination at climax
+- Progressive unlock per role
+- SVG role avatars with uniforms
 
 ## License
 

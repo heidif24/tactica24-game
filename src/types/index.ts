@@ -14,6 +14,7 @@ export interface Role {
     accent: string;
     silhouette: string;
   };
+  startingTools: string[];
 }
 
 export type EvidenceType = 'physical' | 'testimony' | 'digital' | 'document' | 'forensic';
@@ -46,8 +47,11 @@ export interface Choice {
   requiresTool?: string;
   requiresCombination?: string[];
   isCorrect?: boolean;
+  isFatal?: boolean;          // wrong choice can kill the character
+  deathMessage?: string;      // shown on fatal outcome
   scoreDelta?: number;
   revealsEvidence?: string[];
+  healthDelta?: number;       // negative for damage
 }
 
 export interface Scene {
@@ -72,6 +76,7 @@ export interface Case {
   subtitle: string;
   difficulty: 1 | 2 | 3 | 4 | 5;
   roleAffinity: RoleId[];
+  minLevel: number;
   synopsis: string;
   setting: string;
   scenes: Scene[];
@@ -85,11 +90,27 @@ export interface PlayerState {
   name: string;
   level: number;
   xp: number;
+  health: number;
+  maxHealth: number;
   completedCases: string[];
   currentCase: string | null;
+  currentScene: string | null;
   inventory: Tool[];
   discoveredEvidence: string[];
   score: number;
   notes: string[];
   soundEnabled: boolean;
+  lives: number;
 }
+
+export type GameScreen =
+  | 'splash'
+  | 'role-select'
+  | 'hub'
+  | 'case-select'
+  | 'scene'
+  | 'death'
+  | 'victory'
+  | 'case-complete'
+  | 'inventory'
+  | 'notes';

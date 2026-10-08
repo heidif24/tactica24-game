@@ -39,6 +39,7 @@ export const sfx = {
     setTimeout(() => playTone(784, 0.2, 'sine', 0.07), 200);
   },
   wrong: () => playTone(180, 0.25, 'sawtooth', 0.06),
+  death: () => { playTone(120, 0.4, 'sawtooth', 0.1); setTimeout(() => playTone(80, 0.6, 'sawtooth', 0.08), 200); },
   complete: () => {
     [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => playTone(f, 0.2, 'sine', 0.07), i * 120));
   },

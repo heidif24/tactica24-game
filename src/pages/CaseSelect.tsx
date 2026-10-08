@@ -38,7 +38,7 @@ export function CaseSelect({ state, onSelectCase, onBack, onReset }: {
           );
         })}
       </div>
-      <p className="mt-8 text-center text-noir-500 text-sm">Skull = deadly choices. Stay careful.</p>
+      <p className="mt-8 text-center text-noir-500 text-sm">Tap markers in the scene. Skull choices can kill you.</p>
     </div>
   );
 }

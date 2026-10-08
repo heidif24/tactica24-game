@@ -2,63 +2,50 @@
 
 **Think. Deduce. Solve.**
 
-An intellectual case-solving game where you choose a role (Detective, Criminal, Police, Military, Plumber, Hacker, Doctor) and navigate escalating scenarios using tools, evidence, and pure deduction.
+An intellectual case-solving game. Choose a role, put on the uniform, gather evidence, combine clues, and crack the case.
+
+## Play
+
+```bash
+npm install
+npm run dev
+```
+
+Open the URL shown in the terminal.
+
+### Desktop (Electron)
+
+```bash
+npm run electron:dev   # needs concurrently + wait-on: npm i -D concurrently wait-on
+npm run electron:pack  # package for your OS
+```
 
 ## Features
 
-- **7 playable roles** with unique perspectives and strengths
-- **3 fully interactive cases** with progressive unlock
-- Evidence board, tool system, scoring & XP progression
-- Beautiful dark noir aesthetic with smooth animations
-- Persistent progress (localStorage)
-- Fully responsive — works as **Web**, **PWA (installable app)**, and ready for **Desktop** (Electron / Tauri)
+- **7 roles** with unique uniforms and visual character avatars
+- **5 interactive cases** with progressive unlock
+- **Evidence combination** deductions
+- Procedural sound effects
+- XP, levels, titles, persistent progress
+- Dark noir aesthetic
+- Web / PWA / Desktop ready
 
-## Tech Stack
+## Roles
 
-- React 19 + TypeScript
-- Vite 8
-- Tailwind CSS v4
-- Framer Motion
-- Lucide React
+Detective · Criminal · Police · Military · Plumber · Hacker · Doctor
 
-## Getting Started
+## Cases
 
-```bash
-# Install
-npm install
+1. The Shadow Vault ★
+2. The Silent Ward ★★
+3. Pipe Dream ★★
+4. Signal Ghost ★★★
+5. Cold Circuit ★★★
 
-# Development
-npm run dev
+## Tech
 
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-```
-
-## Project Structure
-
-```
-src/
-├── components/     # UI building blocks
-├── data/           # Roles, cases, tools, evidence
-├── hooks/          # useGameState (persistence)
-├── pages/          # Landing, RoleSelect, CaseSelect, Investigation
-├── types/          # TypeScript interfaces
-└── App.tsx         # Screen router
-```
-
-## Adding New Cases
-
-1. Add evidence entries in `src/data/evidence.ts`
-2. Define the case (scenes, choices, solution) in `src/data/cases.ts`
-3. Cases unlock progressively after completing the previous one
+React 19 · TypeScript · Vite 8 · Tailwind CSS v4 · Framer Motion · Electron
 
 ## License
 
-MIT — built for the community.
-
----
-
-*Tactica24 — Every decision shapes the outcome.*
+MIT

@@ -8,13 +8,8 @@ export interface Role {
   icon: string;
   color: string;
   strengths: string[];
-  uniform: {
-    primary: string;
-    secondary: string;
-    accent: string;
-    silhouette: string;
-  };
-  startingTools: string[];
+  uniform: { primary: string; secondary: string; accent: string; silhouette: string };
+  deathFlavor: string;
 }
 
 export type EvidenceType = 'physical' | 'testimony' | 'digital' | 'document' | 'forensic';
@@ -25,8 +20,6 @@ export interface Evidence {
   type: EvidenceType;
   description: string;
   isKey: boolean;
-  discovered: boolean;
-  combinesWith?: string[];
 }
 
 export interface Tool {
@@ -47,11 +40,10 @@ export interface Choice {
   requiresTool?: string;
   requiresCombination?: string[];
   isCorrect?: boolean;
-  isFatal?: boolean;          // wrong choice can kill the character
-  deathMessage?: string;      // shown on fatal outcome
+  isDeadly?: boolean;
+  deathMessage?: string;
   scoreDelta?: number;
   revealsEvidence?: string[];
-  healthDelta?: number;       // negative for damage
 }
 
 export interface Scene {
@@ -60,14 +52,9 @@ export interface Scene {
   narrative: string;
   location: string;
   availableEvidence: string[];
-  availableTools: string[];
   choices: Choice[];
   isClimax?: boolean;
-  deductionPuzzle?: {
-    prompt: string;
-    correctCombination: string[];
-    hints: string[];
-  };
+  deductionPuzzle?: { prompt: string; correctCombination: string[]; hints: string[] };
 }
 
 export interface Case {
@@ -75,13 +62,11 @@ export interface Case {
   title: string;
   subtitle: string;
   difficulty: 1 | 2 | 3 | 4 | 5;
-  roleAffinity: RoleId[];
-  minLevel: number;
+  roleId: RoleId;
   synopsis: string;
   setting: string;
   scenes: Scene[];
   solution: string;
-  solutionEvidence: string[];
   rewards: { xp: number; title?: string };
 }
 
@@ -90,27 +75,12 @@ export interface PlayerState {
   name: string;
   level: number;
   xp: number;
-  health: number;
-  maxHealth: number;
   completedCases: string[];
+  deaths: number;
   currentCase: string | null;
-  currentScene: string | null;
   inventory: Tool[];
   discoveredEvidence: string[];
   score: number;
-  notes: string[];
   soundEnabled: boolean;
   lives: number;
 }
-
-export type GameScreen =
-  | 'splash'
-  | 'role-select'
-  | 'hub'
-  | 'case-select'
-  | 'scene'
-  | 'death'
-  | 'victory'
-  | 'case-complete'
-  | 'inventory'
-  | 'notes';

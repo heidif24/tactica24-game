@@ -1,218 +1,28 @@
 import type { Case } from '../types';
+import { CASE_det_01 } from './cases/det_01';
+import { CASE_det_02 } from './cases/det_02';
+import { CASE_crm_01 } from './cases/crm_01';
+import { CASE_pol_01 } from './cases/pol_01';
+import { CASE_mil_01 } from './cases/mil_01';
+import { CASE_plu_01 } from './cases/plu_01';
+import { CASE_hak_01 } from './cases/hak_01';
+import { CASE_doc_01 } from './cases/doc_01';
 
 export const CASES: Case[] = [
-  { id:'det-01', title:'The Shadow Vault', subtitle:'Bank heist at 02:17', difficulty:1, roleId:'detective',
-    synopsis:'Vault opened. Cameras black. $2.4M gone. One wrong step and you are next.',
-    setting:'Meridian Trust Bank', solution:'Vale colluded with the guard using a master override.',
-    rewards:{xp:120,title:'Shadow Breaker'},
-    scenes:[
-      { id:'s1', title:'Arrival', location:'Lobby', narrative:'Rain. Yellow tape. Manager shakes.',
-        availableEvidence:['ev-cam','ev-key'],
-        choices:[
-          { id:'a', text:'Examine vault lock first', consequence:'Clean open cycle. Master override exists.', leadsTo:'s2', isCorrect:true, scoreDelta:15, revealsEvidence:['ev-key'] },
-          { id:'b', text:'Confront the guard aggressively in the lobby', consequence:'He runs. Crossfire.', isDeadly:true, deathMessage:'Caught in the crossfire. You never cleared the exits.', scoreDelta:-50 },
-          { id:'c', text:'Review camera logs', consequence:'4m12s black from internal terminal.', leadsTo:'s2', isCorrect:true, scoreDelta:12, revealsEvidence:['ev-cam'] },
-        ]},
-      { id:'s2', title:'Vault', location:'Sub-level', narrative:'Empty shelves. Gold cufflink R.V.',
-        availableEvidence:['ev-cuff'],
-        choices:[
-          { id:'a', text:'Bag the cufflink', consequence:'R.V. = Richard Vale.', leadsTo:'s3', isCorrect:true, scoreDelta:20, revealsEvidence:['ev-cuff'] },
-          { id:'b', text:'Enter dark side chamber alone', consequence:'Door seals. Gas.', isDeadly:true, deathMessage:'Trapped. Vale planned for a curious detective.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Deduction', location:'Room', isClimax:true, narrative:'Name the collusion.',
-        availableEvidence:['ev-cam','ev-key','ev-cuff'],
-        choices:[
-          { id:'a', text:'Vale + guard. Guard killed cameras; Vale used master override.', consequence:'Arrested. You live.', isCorrect:true, scoreDelta:40 },
-          { id:'b', text:'Storm Vale apartment alone tonight', consequence:'He is waiting.', isDeadly:true, deathMessage:'No backup. Vale does not miss.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'det-02', title:'The Silent Ward', subtitle:'Patient vanished', difficulty:2, roleId:'detective',
-    synopsis:'Patient #47 gone. Misread staff and you become the next transfer.',
-    setting:'St. Elias Hospital', solution:'Dr Marsh staged the disappearance.',
-    rewards:{xp:180,title:'Ward Whisperer'},
-    scenes:[
-      { id:'s1', title:'Empty Room', location:'Ward 4', narrative:'Journal page. Nurse terrified.',
-        availableEvidence:['ev-journal','ev-cctv'],
-        choices:[
-          { id:'a', text:'Examine journal and CCTV', consequence:'CCTV overwritten.', leadsTo:'s2', isCorrect:true, scoreDelta:18, revealsEvidence:['ev-journal','ev-cctv'] },
-          { id:'b', text:'Accuse the nurse and block exit', consequence:'Panic button. Injection.', isDeadly:true, deathMessage:'Sedated and transferred. You never leave.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Records', location:'Archives', narrative:'Marsh signed experimental protocol.',
-        availableEvidence:['ev-marsh'],
-        choices:[
-          { id:'a', text:'Cross Marsh logs with CCTV', consequence:'Exact overlap.', leadsTo:'s3', isCorrect:true, scoreDelta:25, revealsEvidence:['ev-marsh'] },
-          { id:'b', text:'Break into Marsh office alone', consequence:'Not hospital security.', isDeadly:true, deathMessage:'Private contractors.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Truth', location:'Command', isClimax:true, narrative:'Marsh hid a failed experiment.',
-        availableEvidence:['ev-marsh','ev-cctv'],
-        choices:[
-          { id:'a', text:'Marsh used residual access and false discharge.', consequence:'Marsh in custody.', isCorrect:true, scoreDelta:45 },
-          { id:'b', text:'Confront Marsh in parking garage alone', consequence:'She is not alone.', isDeadly:true, deathMessage:'Two against one.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'crm-01', title:'The Debt Mark', subtitle:'Your face is on a hit list', difficulty:2, roleId:'criminal',
-    synopsis:'48 hours to find who sold you out.',
-    setting:'South Docks', solution:'Brother sold routes to Silent Leo.',
-    rewards:{xp:200,title:'Mark Cleared'},
-    scenes:[
-      { id:'s1', title:'Whisper', location:'Red Lantern', narrative:'Kira slides a photo. Your face. A price.',
-        availableEvidence:['ev-photo'],
-        choices:[
-          { id:'a', text:'Trace who knew your routes', consequence:'Kira\'s brother.', leadsTo:'s2', isCorrect:true, scoreDelta:15, revealsEvidence:['ev-photo'] },
-          { id:'b', text:'Threaten Kira in public', consequence:'Hit team in the room.', isDeadly:true, deathMessage:'You made a scene.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Brother', location:'Warehouse', narrative:'Tied to a chair.',
-        availableEvidence:['ev-ledger'],
-        choices:[
-          { id:'a', text:'Offer a way out for the name', consequence:'Silent Leo.', leadsTo:'s3', isCorrect:true, scoreDelta:22, revealsEvidence:['ev-ledger'] },
-          { id:'b', text:'Cut him free and turn your back', consequence:'Knife.', isDeadly:true, deathMessage:'Cornered rat.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Leo', location:'Rooftop', isClimax:true, narrative:'Leo wants to deal.',
-        availableEvidence:['ev-ledger'],
-        choices:[
-          { id:'a', text:'Bring proof to the council', consequence:'Mark lifted.', isCorrect:true, scoreDelta:40 },
-          { id:'b', text:'Meet Leo alone', consequence:'He brought friends.', isDeadly:true, deathMessage:'No stairs left.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'pol-01', title:'No-Knock Night', subtitle:'Warrant clean. House is not.', difficulty:2, roleId:'police',
-    synopsis:'High-risk warrant. Protocol keeps you alive.',
-    setting:'Eastside', solution:'Thermal + EOD + controlled arrest.',
-    rewards:{xp:190,title:'Shield Steady'},
-    scenes:[
-      { id:'s1', title:'Staging', location:'Van', narrative:'Two armed. Rear is fence.',
-        availableEvidence:['ev-intel'],
-        choices:[
-          { id:'a', text:'Request thermal before breach', consequence:'Three signatures. Adjust stack.', leadsTo:'s2', isCorrect:true, scoreDelta:18, revealsEvidence:['ev-intel'] },
-          { id:'b', text:'Breach front immediately', consequence:'They were ready.', isDeadly:true, deathMessage:'First through the door.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Inside', location:'Hall', narrative:'Locked door ticks.',
-        availableEvidence:['ev-device'],
-        choices:[
-          { id:'a', text:'Hold, call EOD', consequence:'Decoy. Hatch exit cut off.', leadsTo:'s3', isCorrect:true, scoreDelta:25, revealsEvidence:['ev-device'] },
-          { id:'b', text:'Kick the ticking door', consequence:'Not a decoy.', isDeadly:true, deathMessage:'Blast takes the hallway.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Clear', location:'Basement', isClimax:true, narrative:'Suspect reaches behind back.',
-        availableEvidence:['ev-intel'],
-        choices:[
-          { id:'a', text:'Hands visible, shield up', consequence:'Arrest clean.', isCorrect:true, scoreDelta:40 },
-          { id:'b', text:'Rush him', consequence:'Second shooter.', isDeadly:true, deathMessage:'Tunnel vision.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'mil-01', title:'Grid Seven', subtitle:'12 minute window', difficulty:3, roleId:'military',
-    synopsis:'Asset compromised. One bad call = grave.',
-    setting:'Grid 7', solution:'Drone, silent entry, disciplined extract.',
-    rewards:{xp:280,title:'Grid Walker'},
-    scenes:[
-      { id:'s1', title:'Insert', location:'LZ', narrative:'Ridge or drainage.',
-        availableEvidence:['ev-map'],
-        choices:[
-          { id:'a', text:'Drone drainage, ridge overwatch', consequence:'Clear. Move on intel.', leadsTo:'s2', isCorrect:true, scoreDelta:20, revealsEvidence:['ev-map'] },
-          { id:'b', text:'Sprint the ridge', consequence:'Sniper.', isDeadly:true, deathMessage:'Lane was zeroed.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Contact', location:'Compound', narrative:'Guards rotate 4 min.',
-        availableEvidence:['ev-rotate'],
-        choices:[
-          { id:'a', text:'Silent entry on rotation', consequence:'Asset secured.', leadsTo:'s3', isCorrect:true, scoreDelta:28, revealsEvidence:['ev-rotate'] },
-          { id:'b', text:'Blow the wall', consequence:'Every gun turns.', isDeadly:true, deathMessage:'You announced the assault.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Extract', location:'LZ Bravo', isClimax:true, narrative:'Bird 2 min out.',
-        availableEvidence:['ev-map'],
-        choices:[
-          { id:'a', text:'Smoke, staggered bound', consequence:'Success.', isCorrect:true, scoreDelta:50 },
-          { id:'b', text:'Run open field', consequence:'Technical.', isDeadly:true, deathMessage:'No cover.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'plu-01', title:'Pipe Dream', subtitle:'Building drowned inside', difficulty:2, roleId:'plumber',
-    synopsis:'Floor 12 flooded. Wrong valve = you join him.',
-    setting:'Ashford Tower', solution:'Crowe used sevoflurane and bypass valve.',
-    rewards:{xp:200,title:'Pressure Reader'},
-    scenes:[
-      { id:'s1', title:'Flooded Floor', location:'Corridor', narrative:'Water from below.',
-        availableEvidence:['ev-water'],
-        choices:[
-          { id:'a', text:'Trace pressure on branch lines', consequence:'Bypass opened.', leadsTo:'s2', isCorrect:true, scoreDelta:20, requiresTool:'tool-pressure-gauge', revealsEvidence:['ev-water'] },
-          { id:'b', text:'Open main riser', consequence:'Surge.', isDeadly:true, deathMessage:'You do not surface.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Bypass', location:'Chase', narrative:'Valve wet. Sevoflurane vial.',
-        availableEvidence:['ev-vial'],
-        choices:[
-          { id:'a', text:'Link vial to hospital invoices', consequence:'Junior anesthesiologist.', leadsTo:'s3', isCorrect:true, scoreDelta:25, revealsEvidence:['ev-vial'] },
-          { id:'b', text:'Crawl live steam line', consequence:'Steam.', isDeadly:true, deathMessage:'Instant scald.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Resolution', location:'Command', isClimax:true, narrative:'Crowe staged drowning.',
-        availableEvidence:['ev-vial','ev-water'],
-        choices:[
-          { id:'a', text:'Present evidence to investigators', consequence:'Arrested.', isCorrect:true, scoreDelta:45 },
-          { id:'b', text:'Confront Crowe in basement alone', consequence:'Gases.', isDeadly:true, deathMessage:'Wrong mix.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'hak-01', title:'Signal Ghost', subtitle:'Courier vanished', difficulty:3, roleId:'hacker',
-    synopsis:'Impossible tower pings. Trip honeypot = they find your door.',
-    setting:'Midtown', solution:'Replay attack + shell van.',
-    rewards:{xp:260,title:'Ghost Tracker'},
-    scenes:[
-      { id:'s1', title:'Last Known', location:'Alley', narrative:'Empty bag. Impossible sequence.',
-        availableEvidence:['ev-tower'],
-        choices:[
-          { id:'a', text:'Analyze packets for replay', consequence:'Replay attack.', leadsTo:'s2', isCorrect:true, scoreDelta:22, requiresTool:'tool-signal-tracer', revealsEvidence:['ev-tower'] },
-          { id:'b', text:'Port-scan tower management', consequence:'Honeypot.', isDeadly:true, deathMessage:'Trace complete. Van arrives.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Van', location:'Archive', narrative:'False ID. Shell company.',
-        availableEvidence:['ev-rental'],
-        choices:[
-          { id:'a', text:'Correlate shell with burner MAC', consequence:'Corporate intel cell.', leadsTo:'s3', isCorrect:true, scoreDelta:28, revealsEvidence:['ev-rental'] },
-          { id:'b', text:'Phish the CFO', consequence:'Counter-phish.', isDeadly:true, deathMessage:'Door kicks in.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Extract', location:'Analysis', isClimax:true, narrative:'Prove the chain.',
-        availableEvidence:['ev-tower','ev-rental'],
-        choices:[
-          { id:'a', text:'Package proof for client', consequence:'Courier alive.', isCorrect:true, scoreDelta:55 },
-          { id:'b', text:'Dox the cell publicly', consequence:'They find you.', isDeadly:true, deathMessage:'They went to your address.', scoreDelta:-50 },
-        ]},
-    ]},
-  { id:'doc-01', title:'Cold Sample', subtitle:'Lab should not be quiet', difficulty:2, roleId:'doctor',
-    synopsis:'Sample missing. Handle wrong = you are the outbreak.',
-    setting:'Bio-Lab B2', solution:'Cloned badge walk-out. PPE stopped it.',
-    rewards:{xp:210,title:'First Do No Harm'},
-    scenes:[
-      { id:'s1', title:'Quiet Lab', location:'B2', narrative:'Glove on floor. Cabinet ajar.',
-        availableEvidence:['ev-log'],
-        choices:[
-          { id:'a', text:'Suit up, log breach, swab', consequence:'Unauthorized open 01:14.', leadsTo:'s2', isCorrect:true, scoreDelta:20, revealsEvidence:['ev-log'] },
-          { id:'b', text:'Pick up glove bare-handed', consequence:'Vector.', isDeadly:true, deathMessage:'Dermal exposure.', scoreDelta:-50 },
-        ]},
-      { id:'s2', title:'Missing Tech', location:'Locker', narrative:'Badge used after tech left.',
-        availableEvidence:['ev-badge'],
-        choices:[
-          { id:'a', text:'Treat as clone, lock down', consequence:'Stop the courier.', leadsTo:'s3', isCorrect:true, scoreDelta:25, revealsEvidence:['ev-badge'] },
-          { id:'b', text:'Open cold case in open lab', consequence:'Aerosol.', isDeadly:true, deathMessage:'Lab is the outbreak.', scoreDelta:-50 },
-        ]},
-      { id:'s3', title:'Containment', location:'Command', isClimax:true, narrative:'Restricted pathogen.',
-        availableEvidence:['ev-log','ev-badge'],
-        choices:[
-          { id:'a', text:'Chain of custody and quarantine', consequence:'Outbreak averted.', isCorrect:true, scoreDelta:45 },
-          { id:'b', text:'Drive sample to CDC yourself', consequence:'Accident.', isDeadly:true, deathMessage:'Unsecured transport.', scoreDelta:-50 },
-        ]},
-    ]},
+  CASE_det_01,
+  CASE_det_02,
+  CASE_crm_01,
+  CASE_pol_01,
+  CASE_mil_01,
+  CASE_plu_01,
+  CASE_hak_01,
+  CASE_doc_01,
 ];
 
-export const ALL_EVIDENCE: Record<string, {id:string;name:string;type:string;description:string;isKey:boolean}> = {
-  'ev-cam':{id:'ev-cam',name:'Camera Blackout',type:'digital',description:'4m12s from internal terminal.',isKey:true},
-  'ev-key':{id:'ev-key',name:'Vault Keycard Log',type:'digital',description:'Master override exists.',isKey:true},
-  'ev-cuff':{id:'ev-cuff',name:'Cufflink R.V.',type:'physical',description:'Matches Richard Vale.',isKey:true},
-  'ev-journal':{id:'ev-journal',name:'Patient Journal',type:'document',description:'Handwriting variance.',isKey:true},
-  'ev-cctv':{id:'ev-cctv',name:'CCTV Skip',type:'digital',description:'Overwritten.',isKey:true},
-  'ev-marsh':{id:'ev-marsh',name:'Marsh Notes',type:'document',description:'Experimental protocol.',isKey:true},
-  'ev-photo':{id:'ev-photo',name:'Hit Photo',type:'physical',description:'Your face. A price.',isKey:true},
-  'ev-ledger':{id:'ev-ledger',name:'Payment Ledger',type:'document',description:'Payment to Silent Leo.',isKey:true},
-  'ev-intel':{id:'ev-intel',name:'Raid Intel',type:'document',description:'Armed suspects.',isKey:true},
-  'ev-device':{id:'ev-device',name:'Ticking Device',type:'physical',description:'Timer decoy.',isKey:true},
-  'ev-map':{id:'ev-map',name:'Grid Map',type:'document',description:'Ridge vs drainage.',isKey:true},
-  'ev-rotate':{id:'ev-rotate',name:'Guard Rotation',type:'testimony',description:'Four-minute cycle.',isKey:true},
-  'ev-water':{id:'ev-water',name:'Water Origin',type:'forensic',description:'Single branch line.',isKey:true},
-  'ev-vial':{id:'ev-vial',name:'Sevoflurane Vial',type:'physical',description:'Hospital sample.',isKey:true},
-  'ev-tower':{id:'ev-tower',name:'Tower Handoff',type:'digital',description:'Impossible triple ping.',isKey:true},
-  'ev-rental':{id:'ev-rental',name:'Van Rental',type:'document',description:'False ID, shell company.',isKey:true},
-  'ev-log':{id:'ev-log',name:'Cabinet Log',type:'digital',description:'Unauthorized open 01:14.',isKey:true},
-  'ev-badge':{id:'ev-badge',name:'Cloned Badge',type:'digital',description:'Used after tech left.',isKey:true},
-};
+export function getCasesForRole(roleId: string) {
+  return CASES.filter((c) => c.roleId === roleId);
+}
+
+export function getCaseById(id: string) {
+  return CASES.find((c) => c.id === id);
+}

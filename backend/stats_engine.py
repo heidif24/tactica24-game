@@ -556,7 +556,7 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
             if raw_prob < rule.min_probability:
                 continue
             calibrated, sample_count = calibrate_probability(
-                category, rule.sub_market, rule.time_window, raw_prob
+                category, rule.sub_market, rule.time_window, raw_prob, "tactica24-poisson-v2"
             )
             final_prob = calibrated if calibrated is not None else raw_prob
             status = "calibrated" if calibrated is not None else "uncalibrated"
@@ -587,6 +587,7 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
                 calibration_samples=sample_count,
                 raw_probability=round(raw_prob, 4),
                 calibrated_probability=round(calibrated, 4) if calibrated is not None else None,
+                model_version="tactica24-poisson-v2",
             ))
 
     candidates.sort(key=lambda s: (s.calibration_status == "calibrated", s.probability), reverse=True)

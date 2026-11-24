@@ -4,7 +4,7 @@ import math
 from backend.builders.mock_builder import MockSlipBuilder
 from backend.models import Direction, Fixture, MatchStatus, ParsedRule, Selection, SelectionTarget, TeamCornerStats
 from backend.parser import deterministic_parse
-from backend.stats_engine import _candidate_sides, interval_lambda, poisson_zero, window_minutes
+from backend.stats_engine import _candidate_sides, _live_fixture_window_is_future, interval_lambda, poisson_zero, window_minutes
 
 
 def test_first_five_minute_window_is_five_minutes():
@@ -50,3 +50,30 @@ def test_mock_builder_never_mints_a_bookmaker_code():
     assert result.booking_code is None
     assert result.legs[0].status == "skipped"
     assert "no bookmaker" in " ".join(result.logs).lower()
+
+
+def test_live_fixture_is_skipped_when_requested_window_has_started():
+    from datetime import datetime, timedelta, timezone
+    kickoff = (datetime.now(timezone.utc) - timedelta(minutes=12)).isoformat()
+    fx = Fixture(
+        fixture_id="live", home_team="Home", away_team="Away",
+        kickoff_utc=kickoff, league="Test", status=MatchStatus.LIVE,
+        home_stats=TeamCornerStats(team_id="h", team_name="Home", c90_for=4, c90_against=4),
+        away_stats=TeamCornerStats(team_id="a", team_name="Away", c90_for=4, c90_against=4),
+    )
+    assert not _live_fixture_window_is_future(fx, "00:00-04:59")
+    assert _live_fixture_window_is_future(fx, "15:00-19:59")
+
+
+def test_total_market_uses_both_teams_rates():
+    fx = Fixture(
+        fixture_id="total", home_team="Home", away_team="Away",
+        kickoff_utc="2026-11-24T12:00:00+00:00", league="Test",
+        status=MatchStatus.UPCOMING,
+        home_stats=TeamCornerStats(team_id="h", team_name="Home", c90_for=4.0, c90_against=3.0),
+        away_stats=TeamCornerStats(team_id="a", team_name="Away", c90_for=6.0, c90_against=5.0),
+    )
+    rule = ParsedRule(selection_target=SelectionTarget.TOTAL)
+    side = _candidate_sides(rule, fx)[0]
+    assert side[2] == 10.0
+    assert side[3] == 10.0

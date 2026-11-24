@@ -79,8 +79,16 @@ async def health():
     llm_configured = (
         (llm_provider == "openai" and bool(os.getenv("OPENAI_API_KEY")))
         or (llm_provider == "anthropic" and bool(os.getenv("ANTHROPIC_API_KEY")))
-        or llm_provider == "none"
     )
+    setup_requirements = []
+    if not stats_configured:
+        setup_requirements.append("live statistics API key")
+    if not builder_configured:
+        setup_requirements.append("Manage Bet Codes API key")
+    if not llm_configured:
+        setup_requirements.append("OpenAI or Anthropic API key")
+    if not calibration_data_ready:
+        setup_requirements.append("out-of-sample calibration dataset")
     operational = (
         not demo_mode and stats_configured and builder_configured
         and market_mapping_ready and calibration_data_ready and llm_configured
@@ -92,7 +100,9 @@ async def health():
         "calibration_data_ready": calibration_data_ready,
         "calibration_rows": calibration_status["rows"],
         "calibration_profiles": calibration_status["profiles"],
+        "llm_provider": llm_provider,
         "llm_configured": llm_configured,
+        "setup_requirements": setup_requirements,
         "demo_mode": demo_mode,
         "stats_configured": stats_configured,
         "builder_configured": builder_configured,

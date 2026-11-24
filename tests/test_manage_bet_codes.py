@@ -143,3 +143,31 @@ def test_unverified_provider_code_is_never_released(monkeypatch):
     result = asyncio.run(ManageBetCodesBuilder().build([selection()]))
     assert result.booking_code is None
     assert result.legs[0].status == "unavailable"
+
+
+def test_provider_verified_code_without_picks_array_is_accepted(monkeypatch):
+    monkeypatch.setenv("MANAGE_BET_CODES_API_KEY", "test-placeholder")
+    monkeypatch.setenv("T24_REQUIRE_CALIBRATED", "false")
+    async def exact_market(*args, **kwargs):
+        return {
+            "event_id": "evt-1", "key": "pick-1", "market": "Team Corners",
+            "outcome": "Under", "line": "0.5", "odds": "1.80",
+        }
+    class VerifiedNoPicksClient(FakeClient):
+        async def post(self, url, headers=None, json=None):
+            if url.endswith("/resolve"):
+                return FakeResponse({
+                    "plan_id": "plan-test",
+                    "picks": [{"status": "resolved", "bookable": True}],
+                })
+            return FakeResponse({
+                "success": True,
+                "verified": True,
+                "code": "A1B2C",
+                "partial": False,
+                "billing": {"price": 2},
+            })
+    monkeypatch.setattr(ManageBetCodesMarketDiscovery, "discover", exact_market)
+    monkeypatch.setattr(builder_module.httpx, "AsyncClient", VerifiedNoPicksClient)
+    result = asyncio.run(ManageBetCodesBuilder().build([selection()]))
+    assert result.booking_code == "A1B2C"

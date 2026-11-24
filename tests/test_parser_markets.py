@@ -27,3 +27,9 @@ def test_parser_recognises_1x2_draw():
     rule = deterministic_parse("1X2 draw, minimum 30%")
     assert rule.market_category == "result"
     assert rule.selection_target == SelectionTarget.DRAW
+
+
+def test_parser_recognises_double_chance_1x():
+    rule = deterministic_parse("Double chance 1X, minimum 80%")
+    assert rule.market_category == "double_chance"
+    assert rule.outcome == "1X"

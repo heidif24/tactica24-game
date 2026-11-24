@@ -86,6 +86,10 @@ class ManageBetCodesMarketDiscovery:
         if period in ("full_match", "90", "match"):
             # A period-specific market is not a full-match market.
             return not re.search(r"first half|second half|1st half|2nd half|\bht\b|\bminute\b|min\s*\d", label)
+        if period == "00:00-44:59":
+            return any(term in label for term in ("first half", "1st half", "half time", "ht"))
+        if period == "45:00-89:59":
+            return any(term in label for term in ("second half", "2nd half", "2h"))
         start_end = re.search(r"(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})", period)
         if not start_end:
             return False
@@ -98,7 +102,7 @@ class ManageBetCodesMarketDiscovery:
             for a, b in re.findall(r"(\d{1,3})\s*(?:-|to)\s*(\d{1,3})\s*(?:min|minute)", label)
         ]
         if minute_ranges:
-            return any(a * 60 == start and (b + 1) * 60 - 1 == end for a, b in minute_ranges)
+            return any(a * 60 == start and b * 60 - 1 == end for a, b in minute_ranges)
         compact = _norm(period)
         if compact and compact in _norm(label):
             return True
@@ -112,7 +116,13 @@ class ManageBetCodesMarketDiscovery:
     def _market_matches(label: str, category: str, sub_market: str) -> bool:
         text = _norm(label)
         if category == "corners":
-            return "corner" in text
+            if "corner" not in text:
+                return False
+            if "team_interval" in sub_market or "team_corners" in sub_market:
+                return "team" in text or "home" in text or "away" in text
+            if "total_interval" in sub_market or "total_corners" in sub_market:
+                return "team" not in text
+            return True
         if category == "goals":
             return "goal" in text and "player" not in text
         if category == "btts":

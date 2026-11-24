@@ -101,7 +101,7 @@
       </button>
     </section>
 
-    <section class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
+    <section id="progressSection" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
       <div class="flex flex-wrap gap-3 mb-4" id="steps">
         <div data-step="1" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">1 · Parse</div>
         <div data-step="2" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">2 · Scout</div>
@@ -138,7 +138,7 @@
 
   <script>
     // Same-origin when served by FastAPI; override via localStorage if needed
-    const API = localStorage.getItem('slipforge_api') || window.location.origin;
+    const API = localStorage.getItem('tactica24_api') || window.location.origin;\n    const conversationHistory = [];
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
@@ -225,7 +225,7 @@
 
       const maxLegs = +document.getElementById('maxLegs').value || 3;
       const minProb = (+document.getElementById('minProb').value || 75) / 100;
-      const bookmaker = document.getElementById('bookmaker').value;
+      const bookmaker = document.getElementById('bookmaker').value;\n      const context = [...conversationHistory];\n      document.getElementById('progressSection').classList.remove('hidden');
 
       document.getElementById('runBtn').disabled = true;
       document.getElementById('runBtn').textContent = 'Analysing…';
@@ -240,7 +240,7 @@
         const resp = await fetch(`${API}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, bookmaker }),
+          body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, bookmaker, context }),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 

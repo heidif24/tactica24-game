@@ -129,6 +129,8 @@ class ManageBetCodesMarketDiscovery:
             return ("both teams" in text and "score" in text) or "btts" in text
         if category == "result":
             return any(term in text for term in ("1x2", "match result", "full time result", "winner"))
+        if category == "double_chance":
+            return "double chance" in text
         if category == "cards":
             return "card" in text
         return False

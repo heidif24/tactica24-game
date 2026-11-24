@@ -536,7 +536,7 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
                 probs = _result_probabilities(h_lam, a_lam)
                 if side not in probs:
                     continue
-                computed.append((side, f"{h.team_name} vs {a.away_team}", h_lam + a_lam, probs[side], side))
+                computed.append((side, f"{h.team_name} vs {a.team_name}", h_lam + a_lam, probs[side], side))
             else:
                 probs = _result_probabilities(h_lam, a_lam)
                 outcome = (rule.outcome or "1X").upper()

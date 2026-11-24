@@ -54,6 +54,8 @@ def _live_fixture_window_is_future(fixture: Fixture, window: str) -> bool:
     """Do not recommend a live interval once it has started."""
     if fixture.status != MatchStatus.LIVE:
         return True
+    if window in ("full_match", "90", "match"):
+        return False
     try:
         kickoff = datetime.fromisoformat(fixture.kickoff_utc.replace("Z", "+00:00"))
         if kickoff.tzinfo is None:
@@ -78,11 +80,13 @@ def fair_odds(prob: float) -> float:
 
 def interval_lambda(
     c90_for: float,
-    c90_against: float,
+    c90_against: float | None,
     window_min: float,
     first15_share: float = DEFAULT_FIRST15_SHARE,
     blend: float = 0.55,
 ) -> float:
+    if c90_against is None:
+        return 0.0
     rate_90 = blend * c90_for + (1 - blend) * c90_against
     if window_min >= 89.5:
         share = 1.0
@@ -215,8 +219,11 @@ class ApiFootballProvider(StatsProvider):
             )
         stats = rows[0] if isinstance(rows, list) else rows
         fixtures_played = ((stats.get("fixtures") or {}).get("played") or {}).get("total") or 0
-        corners_for = ((stats.get("corners") or {}).get("total") or {}).get("total")
-        if not corners_for or not fixtures_played:
+        corner_stats = stats.get("corners") or {}
+        corners_for = (((corner_stats.get("for") or {}).get("total") or {}).get("total")
+                       or ((corner_stats.get("total") or {}).get("total")))
+        corners_against = ((corner_stats.get("against") or {}).get("total") or {}).get("total")
+        if corners_for is None or not fixtures_played:
             raise RuntimeError(
                 f"API-Football did not supply usable corner totals for team {team_id}; "
                 "the app will not substitute assumed team averages"
@@ -226,7 +233,7 @@ class ApiFootballProvider(StatsProvider):
         goals_against = ((goals.get("against") or {}).get("total") or {}).get("total")
         rates = {
             "c90_for": round(float(corners_for) / float(fixtures_played), 2),
-            "c90_against": 4.8,
+            "c90_against": round(float(corners_against) / float(fixtures_played), 2) if corners_against is not None else None,
             "first15_share": DEFAULT_FIRST15_SHARE,
             "g90_for": round(float(goals_for) / float(fixtures_played), 3) if goals_for is not None else None,
             "g90_against": round(float(goals_against) / float(fixtures_played), 3) if goals_against is not None else None,
@@ -389,8 +396,10 @@ class FootyStatsProvider(StatsProvider):
                 continue
             h_for = float(row["team_a_corners_per_match"])
             a_for = float(row["team_b_corners_per_match"])
-            h_against = float(row.get("team_a_corners_against_per_match") or 4.8)
-            a_against = float(row.get("team_b_corners_against_per_match") or 4.8)
+            h_against_raw = row.get("team_a_corners_against_per_match")
+            a_against_raw = row.get("team_b_corners_against_per_match")
+            h_against = float(h_against_raw) if h_against_raw is not None else None
+            a_against = float(a_against_raw) if a_against_raw is not None else None
             h_goals = row.get("team_a_goals_per_match")
             a_goals = row.get("team_b_goals_per_match")
             h_goals_against = row.get("team_a_goals_against_per_match")
@@ -491,6 +500,8 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
         if category == "corners":
             w_min = window_minutes(rule.time_window)
             for side, team_name, c_for, c_against, first15 in _candidate_sides(rule, fx):
+                if c_against is None:
+                    continue
                 lam = interval_lambda(c_for, c_against, w_min, first15)
                 prob = _poisson_cdf(lam, rule.line)
                 if rule.direction == Direction.OVER:
@@ -579,8 +590,11 @@ def _candidate_sides(
     if rule.selection_target == SelectionTarget.AWAY:
         return [("away", a.team_name, a.c90_for, a.c90_against, a.first15_share)]
     if rule.selection_target == SelectionTarget.TOTAL:
+        if h.c90_against is None or a.c90_against is None:
+            return []
         total_for = h.c90_for + a.c90_for
-        return [("total", f"{h.team_name} + {a.team_name}", total_for, total_for,
+        total_against = h.c90_against + a.c90_against
+        return [("total", f"{h.team_name} + {a.team_name}", total_for, total_against,
                  (h.first15_share + a.first15_share) / 2)]
     return [
         ("home", h.team_name, h.c90_for, h.c90_against, h.first15_share),

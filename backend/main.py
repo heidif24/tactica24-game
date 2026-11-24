@@ -34,11 +34,11 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("slipforge")
+logger = logging.getLogger("tactica24")
 
 app = FastAPI(
-    title="SlipForge",
-    description="Natural-language corner rules → statistical scouting → 1xBet booking codes",
+    title="Tactica24",
+    description="Conversational football analysis, exact market validation, and verified booking codes",
     version="1.0.0",
 )
 

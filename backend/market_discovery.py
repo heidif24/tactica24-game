@@ -127,31 +127,26 @@ class ManageBetCodesMarketDiscovery:
         """Return an exact provider pick descriptor or None when not found."""
         async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=8.0)) as client:
             bookmakers = await self._catalog(client, "bookmakers")
-            book_items = self._items(bookmakers, "bookmakers", "data", "items")
+            book_items = self._items(bookmakers, "bookmakers", "items")
             book = next(
                 (b for b in book_items if _norm(_get_first(b, "key", "id", "slug", "name")) == _norm(bookmaker)),
                 None,
             )
-            if book is not None:
-                if book.get("supports_book") is False or book.get("supports_resolve") is False:
-                    return None
-                if book.get("supports_search") is False:
-                    return None
+            if book is not None and (
+                book.get("supports_book") is False
+                or book.get("supports_resolve") is False
+                or book.get("supports_search") is False
+            ):
+                return None
 
-            # Search accepts a batch of free-text fixture queries. Use the
-            # exact fixture and competition to avoid selecting a similarly
-            # named match.
             search_response = await client.post(
                 f"{self.base}/events/search",
                 headers=self._headers(),
-                json={
-                    "bookmaker": bookmaker,
-                    "queries": [f"{selection.home_team} vs {selection.away_team}"],
-                },
+                json={"bookmaker": bookmaker, "queries": [f"{selection.home_team} vs {selection.away_team}"]},
             )
             search_response.raise_for_status()
             search_payload = search_response.json()
-            events = self._items(search_payload, "events", "results", "matches", "items")
+            events = self._items(search_payload, "events", "results", "matches", "items", "data")
             matching = [
                 event for event in events
                 if self._event_matches(event, selection.home_team, selection.away_team, selection.league)
@@ -163,20 +158,28 @@ class ManageBetCodesMarketDiscovery:
             if not event_id:
                 return None
 
-            market_response = await client.get(
-                f"{self.base}/events/{event_id}/markets",
-                headers=self._headers(),
-                params={"bookmaker": bookmaker},
-            )
-            market_response.raise_for_status()
-            market_payload = market_response.json()
-            markets = self._items(market_payload, "markets", "data", "items")
-            if not markets:
-                return None
-
             wanted_category = getattr(selection, "market_category", "corners")
             wanted_sub = getattr(selection, "sub_market", "team_interval_corners")
             period = selection.time_window
+            supports_markets = book.get("supports_markets", True) if book else True
+
+            if supports_markets:
+                response = await client.get(
+                    f"{self.base}/events/{event_id}/markets",
+                    headers=self._headers(),
+                    params={"bookmaker": bookmaker},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                markets = self._items(payload, "markets", "items", "data")
+            else:
+                # Some bookmakers support search/resolve but do not expose a
+                # per-event market catalogue. Use the provider's canonical
+                # market catalogue, then let resolve perform the final exact
+                # event-specific validation.
+                payload = await self._catalog(client, "markets")
+                markets = self._items(payload, "markets", "items", "data")
+
             candidates = []
             for market in markets:
                 label = str(_get_first(market, "canonical", "name", "label", "market", "title") or "")
@@ -192,15 +195,16 @@ class ManageBetCodesMarketDiscovery:
             outcomes = market.get("outcomes") or market.get("selections") or []
             if not isinstance(outcomes, list):
                 return None
-            expected = _norm(selection.bookmaker_outcome or selection.direction)
-            if selection.selection_side == "home":
-                expected = "home" if wanted_category == "result" else expected
-            elif selection.selection_side == "away":
-                expected = "away" if wanted_category == "result" else expected
+            expected = _norm(getattr(selection, "bookmaker_outcome", None) or selection.direction)
+            if selection.selection_side == "home" and wanted_category == "result":
+                expected = "home"
+            elif selection.selection_side == "away" and wanted_category == "result":
+                expected = "away"
             elif selection.selection_side == "draw":
                 expected = "draw"
-            elif selection.selection_side == "total":
+            elif selection.selection_side == "total" and wanted_category in ("goals", "corners"):
                 expected = "over" if selection.direction == "over" else "under"
+
             matched = []
             for outcome in outcomes:
                 if not isinstance(outcome, dict):
@@ -209,8 +213,12 @@ class ManageBetCodesMarketDiscovery:
                 line = _get_first(outcome, "line", "handicap", "total")
                 if expected and expected not in name:
                     continue
-                if line is not None and abs(float(str(line).replace(",", ".")) - float(selection.line)) > 1e-6:
-                    continue
+                if line is not None:
+                    try:
+                        if abs(float(str(line).replace(",", ".")) - float(selection.line)) > 1e-6:
+                            continue
+                    except ValueError:
+                        continue
                 matched.append(outcome)
             if len(matched) != 1:
                 return None
@@ -218,13 +226,15 @@ class ManageBetCodesMarketDiscovery:
             outcome = matched[0]
             key = _get_first(outcome, "key", "selection_key", "id")
             odds = _get_first(outcome, "odds", "price", "decimal_odds")
-            if not key and not (_get_first(market, "canonical", "name") and _get_first(outcome, "canonical", "name")):
+            canonical_market = _get_first(market, "canonical", "name", "label") or label
+            canonical_outcome = _get_first(outcome, "canonical", "name", "label", "outcome")
+            if not key and not canonical_outcome:
                 return None
             return {
                 "event_id": str(event_id),
                 "key": str(key) if key else None,
-                "market": str(_get_first(market, "canonical", "name") or label),
-                "outcome": str(_get_first(outcome, "canonical", "name") or _get_first(outcome, "label")),
+                "market": str(canonical_market),
+                "outcome": str(canonical_outcome) if canonical_outcome else None,
                 "line": str(_get_first(outcome, "line", "handicap", "total") or selection.line),
                 "odds": str(odds) if odds is not None else None,
             }

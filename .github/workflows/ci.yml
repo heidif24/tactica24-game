@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, operationalize/accuracy-and-safety]
+    branches: [main, operationalize/accuracy-and-safety, feature/conversational-mbc-engine]
   pull_request:
     branches: [main]
 jobs:

@@ -46,11 +46,11 @@
     <header class="flex items-center justify-between border-b border-terminal-border pb-4">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-terminal-accent/20 flex items-center justify-center glow">
-          <span class="text-terminal-accent font-bold text-lg mono">SF</span>
+          <span class="text-terminal-accent font-bold text-lg mono">T24</span>
         </div>
         <div>
           <h1 class="text-xl font-semibold tracking-tight">Tactica24</h1>
-          <p class="text-xs text-terminal-muted mono">NL rule → Poisson scout → 1xBet code</p>
+          <p class="text-xs text-terminal-muted mono">Conversational analysis → market validation → verified code</p>
         </div>
       </div>
       <div id="healthBadge" class="text-xs mono px-2 py-1 rounded border border-terminal-border text-terminal-muted">connecting…</div>
@@ -83,13 +83,14 @@
             class="w-full mt-1 bg-terminal-bg border border-terminal-border rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:border-terminal-accent" />
         </div>
         <div>
-          <label class="text-xs text-terminal-muted">1xBet domain</label>
-          <select id="baseUrl"
+          <label class="text-xs text-terminal-muted">Target bookmaker</label>
+          <select id="bookmaker"
             class="w-full mt-1 bg-terminal-bg border border-terminal-border rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:border-terminal-accent">
-            <option value="">Use .env default</option>
-            <option value="https://1xbet.ng">1xbet.ng</option>
-            <option value="https://1xbet.com">1xbet.com</option>
-            <option value="https://1xbet.ke">1xbet.ke</option>
+            <option value="sportybet">SportyBet Nigeria</option>
+            <option value="onexbet">1xBet</option>
+            <option value="bet9ja">Bet9ja</option>
+            <option value="msport">MSport</option>
+            <option value="betking">BetKing</option>
           </select>
         </div>
       </div>
@@ -167,7 +168,7 @@
 
     function log(msg, isError = false) {
       const feed = document.getElementById('logFeed');
-      if (feed.firstChild?.textContent === 'Awaiting prompt…') feed.innerHTML = '';
+      if (feed.firstChild?.textContent === 'Ready for your instructions…') feed.innerHTML = '';
       const line = document.createElement('div');
       line.className = 'log-line' + (isError ? ' text-terminal-danger' : '');
       line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;

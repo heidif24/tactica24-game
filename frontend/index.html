@@ -113,10 +113,6 @@
     </section>
 
     <section id="results" class="hidden space-y-4">
-      <div class="bg-terminal-panel border border-terminal-border rounded-xl p-5">
-        <h2 class="text-sm font-semibold mb-3 text-terminal-muted uppercase tracking-wider">Selections</h2>
-        <div id="legsTable" class="space-y-3"></div>
-      </div>
       <div id="codeCard" class="hidden bg-terminal-panel border border-terminal-accent/40 rounded-xl p-5 glow">
         <h2 class="text-sm font-semibold mb-2 text-terminal-accent uppercase tracking-wider">1xBet Booking Code</h2>
         <div class="flex items-center gap-3">
@@ -127,6 +123,10 @@
           <p class="text-xs text-terminal-muted mb-2">Verification screenshot</p>
           <img id="screenshot" class="rounded-lg border border-terminal-border max-w-full" alt="betslip screenshot" />
         </div>
+      </div>
+      <div id="noCodeCard" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
+        <h2 class="text-sm font-semibold mb-2 text-terminal-warn uppercase tracking-wider">No verified code</h2>
+        <p class="text-sm text-terminal-muted">The analysis did not produce a fully verified bookmaker slip. No code will be shown until the live data and booking provider confirm it.</p>
       </div>
     </section>
 
@@ -230,6 +230,7 @@
       document.getElementById('logFeed').innerHTML = '';
       document.getElementById('results').classList.add('hidden');
       document.getElementById('codeCard').classList.add('hidden');
+      document.getElementById('noCodeCard').classList.add('hidden');
       setStep(1, 'active');
       log('Pipeline started…');
 
@@ -261,10 +262,13 @@
             if (event.error) { log(event.error, true); setStep(0, 'idle'); break; }
             setStep(event.stage, event.done ? 'done' : 'active');
             log(`[${event.stage_name}] ${event.message}`);
-            if (event.detail?.selections) renderLegs(event.detail.selections);
-            if (event.detail?.legs) renderLegs(event.detail.legs);
-            if (event.done && event.detail?.booking_code) {
-              showCode(event.detail.booking_code, event.detail.screenshot_b64);
+            if (event.done) {
+              document.getElementById('results').classList.remove('hidden');
+              if (event.detail?.booking_code) {
+                showCode(event.detail.booking_code, event.detail.screenshot_b64);
+              } else {
+                document.getElementById('noCodeCard').classList.remove('hidden');
+              }
             }
           }
         }

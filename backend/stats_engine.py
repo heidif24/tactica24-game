@@ -28,13 +28,36 @@ logger = logging.getLogger(__name__)
 DEFAULT_FIRST15_SHARE = 0.22
 
 
-def window_minutes(window: str) -> float:
+def window_bounds(window: str) -> tuple[float, float]:
     m = re.match(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", window)
     if not m:
-        return 5.0
+        return 0.0, 5.0
     start = int(m.group(1)) * 60 + int(m.group(2))
     end = int(m.group(3)) * 60 + int(m.group(4))
-    return max((end - start + 1) / 60.0, 0.5)
+    if end < start:
+        raise ValueError(f"Invalid interval: {window}")
+    return start / 60.0, (end + 1) / 60.0
+
+
+def window_minutes(window: str) -> float:
+    start, end = window_bounds(window)
+    return max(end - start, 0.5)
+
+
+def _live_fixture_window_is_future(fixture: Fixture, window: str) -> bool:
+    """Do not recommend a live interval once it has started."""
+    if fixture.status != MatchStatus.LIVE:
+        return True
+    try:
+        kickoff = datetime.fromisoformat(fixture.kickoff_utc.replace("Z", "+00:00"))
+        if kickoff.tzinfo is None:
+            kickoff = kickoff.replace(tzinfo=timezone.utc)
+        elapsed = max((datetime.now(timezone.utc) - kickoff.astimezone(timezone.utc)).total_seconds() / 60.0, 0.0)
+        start_min, _ = window_bounds(window)
+        return elapsed < start_min
+    except (TypeError, ValueError):
+        logger.warning("Skipping live fixture with invalid kickoff time: %s", fixture.fixture_id)
+        return False
 
 
 def poisson_zero(lambda_: float) -> float:
@@ -407,6 +430,8 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
     candidates: list[Selection] = []
 
     for fx in fixtures:
+        if not _live_fixture_window_is_future(fx, rule.time_window):
+            continue
         sides = _candidate_sides(rule, fx)
         for side, team_name, c_for, c_against, first15 in sides:
             lam = interval_lambda(c_for, c_against, w_min, first15)
@@ -462,7 +487,7 @@ def _candidate_sides(
         return [("away", a.team_name, a.c90_for, a.c90_against, a.first15_share)]
     if rule.selection_target == SelectionTarget.TOTAL:
         total_for = h.c90_for + a.c90_for
-        return [("total", f"{h.team_name} + {a.team_name}", total_for, 0.0,
+        return [("total", f"{h.team_name} + {a.team_name}", total_for, total_for,
                  (h.first15_share + a.first15_share) / 2)]
     return [
         ("home", h.team_name, h.c90_for, h.c90_against, h.first15_share),

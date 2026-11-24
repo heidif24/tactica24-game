@@ -128,7 +128,7 @@
       </div>
       <div id="noCodeCard" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
         <h2 class="text-sm font-semibold mb-2 text-terminal-warn uppercase tracking-wider">No verified code</h2>
-        <p class="text-sm text-terminal-muted">The analysis did not produce a fully verified bookmaker slip. No code will be shown until the live data and booking provider confirm it.</p>
+        <p id="noCodeReason" class="text-sm text-terminal-muted">No verified code was issued. The exact market, data or booking checks were not satisfied.</p>
       </div>
     </section>
 
@@ -233,6 +233,9 @@
       const context = [...conversationHistory];
       document.getElementById('progressSection').classList.remove('hidden');
 
+      document.getElementById('results').classList.add('hidden');
+      document.getElementById('codeCard').classList.add('hidden');
+      document.getElementById('noCodeCard').classList.add('hidden');
       document.getElementById('runBtn').disabled = true;
       document.getElementById('runBtn').textContent = 'Analysing…';
       document.getElementById('logFeed').innerHTML = '';
@@ -267,15 +270,21 @@
             let event;
             try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
-            if (event.error) { log(event.error, true); setStep(0, 'idle'); break; }
+            if (event.error) { log('Request could not be completed. Check the app configuration.', true); setStep(0, 'idle'); break; }
             setStep(event.stage, event.done ? 'done' : 'active');
-            log(`[${event.stage_name}] ${event.message}`);
+            log(event.stage_name);
             if (event.done) {
               document.getElementById('results').classList.remove('hidden');
-              if (event.detail?.legs?.length) renderLegs(event.detail.legs);
               if (event.detail?.booking_code) {
                 showCode(event.detail.booking_code, event.detail.screenshot_b64);
               } else {
+                const logs = (event.detail?.logs || []).join(' ').toLowerCase();
+                const reason = logs.includes('calibration')
+                  ? 'Historical out-of-sample probability calibration is not ready for this market and period.'
+                  : logs.includes('market') || logs.includes('resolve')
+                    ? 'The exact requested market could not be matched and verified at the selected bookmaker. No substitute market was used.'
+                    : 'The booking provider did not verify a complete code. No code was issued.';
+                document.getElementById('noCodeReason').textContent = reason;
                 document.getElementById('noCodeCard').classList.remove('hidden');
               }
             }

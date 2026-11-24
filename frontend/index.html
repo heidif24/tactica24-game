@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SlipForge — Corner Rule Terminal</title>
+  <title>Tactica24 — Conversational Football Intelligence</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -49,7 +49,7 @@
           <span class="text-terminal-accent font-bold text-lg mono">SF</span>
         </div>
         <div>
-          <h1 class="text-xl font-semibold tracking-tight">SlipForge</h1>
+          <h1 class="text-xl font-semibold tracking-tight">Tactica24</h1>
           <p class="text-xs text-terminal-muted mono">NL rule → Poisson scout → 1xBet code</p>
         </div>
       </div>
@@ -57,10 +57,10 @@
     </header>
 
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
-      <label class="block text-sm font-medium text-terminal-muted">Betting rule (plain English)</label>
+      <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
-        placeholder="Find upcoming football matches where Team 1 or Team 2 is statistically unlikely to get a corner in the first 5 minutes, minimum 75% probability, max 3 legs"></textarea>
+        placeholder="Example: Find the safest upcoming football selections for tomorrow, analyse first-half goals and corners, use a maximum of 3 legs, and only return a verified SportyBet code."></textarea>
 
       <div class="flex flex-wrap gap-2">
         <button data-preset="No corner in first 5 mins (safest team), min 75%, max 3 legs"
@@ -96,7 +96,7 @@
 
       <button id="runBtn"
         class="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-terminal-accent text-terminal-bg font-semibold text-sm hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed">
-        Find best code
+        Analyse & find code
       </button>
     </section>
 
@@ -108,13 +108,13 @@
         <div data-step="4" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">4 · Code</div>
       </div>
       <div id="logFeed" class="h-40 overflow-y-auto mono text-xs space-y-1 text-terminal-muted bg-terminal-bg rounded-lg p-3 border border-terminal-border">
-        <div>Awaiting prompt…</div>
+        <div>Ready for your instructions…</div>
       </div>
     </section>
 
     <section id="results" class="hidden space-y-4">
       <div id="codeCard" class="hidden bg-terminal-panel border border-terminal-accent/40 rounded-xl p-5 glow">
-        <h2 class="text-sm font-semibold mb-2 text-terminal-accent uppercase tracking-wider">1xBet Booking Code</h2>
+        <h2 class="text-sm font-semibold mb-2 text-terminal-accent uppercase tracking-wider">Verified Booking Code</h2>
         <div class="flex items-center gap-3">
           <code id="bookingCode" class="mono text-2xl font-bold tracking-widest text-terminal-accent"></code>
           <button id="copyBtn" class="text-xs px-3 py-1.5 rounded border border-terminal-border hover:border-terminal-accent transition">Copy</button>
@@ -131,7 +131,7 @@
     </section>
 
     <footer class="text-center text-xs text-terminal-muted pt-4 border-t border-terminal-border">
-      SlipForge · Educational use only · Automating bookmakers may violate ToS
+      Tactica24 · Educational use only · Automating bookmakers may violate ToS
     </footer>
   </div>
 
@@ -224,7 +224,7 @@
 
       const maxLegs = +document.getElementById('maxLegs').value || 3;
       const minProb = (+document.getElementById('minProb').value || 75) / 100;
-      const baseUrl = document.getElementById('baseUrl').value || null;
+      const bookmaker = document.getElementById('bookmaker').value;
 
       document.getElementById('runBtn').disabled = true;
       document.getElementById('runBtn').textContent = 'Analysing…';
@@ -236,10 +236,10 @@
       log('Pipeline started…');
 
       try {
-        const resp = await fetch(`${API}/api/pipeline`, {
+        const resp = await fetch(`${API}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, base_url: baseUrl }),
+          body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, bookmaker }),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 

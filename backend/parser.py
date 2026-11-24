@@ -31,7 +31,7 @@ Convert the user prompt into a single JSON object matching this schema exactly:
   "direction": "under",
   "min_probability": 0.75,
   "max_legs": 3,
-  "match_status": "upcoming_or_live"
+  "match_status": "upcoming"
 }
 Only output valid JSON. No markdown, no commentary."""
 
@@ -102,7 +102,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         max_legs = int(legs_m.group(1))
 
     # status
-    status = MatchStatus.UPCOMING_OR_LIVE
+    status = MatchStatus.UPCOMING
     if "live only" in text or "only live" in text:
         status = MatchStatus.LIVE
     elif "upcoming only" in text or "pre-match" in text:

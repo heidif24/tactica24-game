@@ -507,7 +507,7 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
                 if rule.direction == Direction.OVER:
                     prob = 1.0 - prob
                 computed.append((side, team_name, lam, prob, "over" if rule.direction == Direction.OVER else "under"))
-        elif category in ("goals", "btts", "result"):
+        elif category in ("goals", "btts", "result", "double_chance"):
             # Season aggregates cannot support exact minute-interval predictions.
             if not is_full_match:
                 continue
@@ -531,12 +531,23 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
                 outcome = (rule.outcome or "Yes").lower()
                 prob = yes_prob if outcome == "yes" else 1.0 - yes_prob
                 computed.append(("both", f"{h.team_name} + {a.team_name}", h_lam + a_lam, prob, outcome))
-            else:
+            elif category == "result":
                 side = rule.selection_target.value
                 probs = _result_probabilities(h_lam, a_lam)
                 if side not in probs:
                     continue
-                computed.append((side, f"{h.team_name} vs {a.team_name}", h_lam + a_lam, probs[side], side))
+                computed.append((side, f"{h.team_name} vs {a.away_team}", h_lam + a_lam, probs[side], side))
+            else:
+                probs = _result_probabilities(h_lam, a_lam)
+                outcome = (rule.outcome or "1X").upper()
+                double_chance = {
+                    "1X": probs["home"] + probs["draw"],
+                    "X2": probs["draw"] + probs["away"],
+                    "12": probs["home"] + probs["away"],
+                }
+                if outcome not in double_chance:
+                    continue
+                computed.append((outcome.lower(), f"{h.team_name} vs {a.team_name}", h_lam + a_lam, double_chance[outcome], outcome))
         else:
             # Cards and other categories require observed event-level data.
             continue

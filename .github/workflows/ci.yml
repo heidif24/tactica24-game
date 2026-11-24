@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, operationalize/accuracy-and-safety]
+    branches: [main, operationalize/accuracy-and-safety, feature/conversational-mbc-engine]
   pull_request:
     branches: [main]
 jobs:
@@ -12,6 +12,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt pytest
       - run: python -m compileall -q backend tests
       - run: python -m pytest -q

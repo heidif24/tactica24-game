@@ -1,143 +1,89 @@
-# SlipForge
+# Tactica24
 
-**Natural-language betting rule → Poisson corner scouting → 1xBet booking code**
+Conversational football analysis, exact bookmaker-market discovery, historical probability calibration, and verified booking-code creation.
 
-Complete, runnable end-to-end app. Default mode (`mock` + `mock`) needs **zero API keys** and demonstrates the analysis pipeline with sample fixtures. It does **not** create a real bookmaker code.
+## Deployment
 
-> **Disclaimer**  
-> Automating 1xBet (or any bookmaker) almost certainly violates their Terms of Service and can get accounts banned. The Playwright builder is included for research; prefer `SLIP_BUILDER=mock` or an official partner API.
+This repository is a Python FastAPI application. Vercel's FastAPI runtime entrypoint is declared in the root `pyproject.toml`:
 
----
+    [tool.vercel]
+    entrypoint = "backend.main:app"
 
-> **Production-readiness note (24 Nov 2026)**  
-> The default `mock` providers are demonstration-only. They do not query live fixtures or a bookmaker and will never issue a booking code. The health endpoint reports this as `degraded`. A real code is returned only when a configured booking API confirms every requested leg and returns a valid code. The unverified Playwright bookmaker automation path is disabled because its generic odds selectors could click the wrong market.
->
-> The current Poisson output is a model estimate, not a proven or calibrated success probability. The first-15-minute share is an assumption unless the data source supplies interval-level history. No amount of model ranking guarantees a winning bet. Before treating the output as decision-grade, the engine needs historical backtesting, probability calibration, current market/odds validation, and out-of-sample evaluation. In particular, do not use the displayed percentage as a verified hit rate.
->
-> For live operation, configure a supported live statistics source and an authorised booking-code API. This repository does not contain bookmaker credentials or a booking API endpoint; those must be supplied as deployment secrets and the external service must implement the contract below.
+The FastAPI application serves the dashboard at `/` and API endpoints under `/api`. Vercel uses the root `requirements.txt` to install Python dependencies.
 
-## One-command start
+## What is implemented
 
-```bash
-git clone https://github.com/heidif24/tactica24-game.git
-cd tactica24-game
+- Conversational request parsing with OpenAI/Anthropic support and deterministic fallback.
+- Supported statistical families: corners (full-match and requested intervals), full-match goals, BTTS, 1X2 and double chance.
+- Minute-level goal, BTTS, result and card markets are not inferred from full-match aggregate rates.
+- API-Football and FootyStats fixture/statistics adapters; missing statistics are not replaced with fabricated team averages.
+- Manage Bet Codes market discovery using bookmaker capability catalogues, event search, event-specific markets or canonical market catalogue fallback.
+- Strict selection resolution, strict booking, odds-change rejection, and provider load-back verification.
+- A code is returned only if every requested selection is resolved, booked and provider-verified.
+- Conversational SSE endpoint at `POST /api/chat`, with recent prompt context.
+- GitHub Actions checks Python compilation and automated tests.
 
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+## Probability calibration is required for live booking
 
-cp .env.example .env               # defaults: mock stats + mock builder
+Raw Poisson outputs are model estimates, not proven hit rates. Live code creation is blocked by default unless the requested market/period has enough timestamped out-of-sample calibration evidence.
 
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
+Set `T24_CALIBRATION_FILE=data/historical_outcomes.csv` and provide a CSV with these columns:
 
-Open **http://localhost:8000** — the dashboard is served by FastAPI.
+    market_category,sub_market,time_window,predicted_probability,outcome,predicted_at,settled_at
 
-Click a preset chip → **Run Pipeline**. You should see:
-1. Rule parsed  
-2. Fixtures scanned + ranked by Poisson P(0 corners)  
-3. Demo builder explicitly reports that no bookmaker was contacted  
-4. No booking code is issued in demo mode
+Each row must be a forecast recorded before the match settled. Outcomes are 1 for the selected event occurring and 0 otherwise. The default minimum is 200 observations for the exact market/sub-market/period and 30 observations in the probability bin. Tactica24 uses a conservative 95% Wilson lower confidence bound rather than treating the raw hit rate as certainty.
 
----
+A blank schema template is included at `data/historical_outcomes.template.csv`. It is not historical data and does not make the app live-ready. Do not fill it with invented or retrospectively fitted predictions.
 
-## Go live (optional)
+## Manage Bet Codes configuration
 
-### Stats
+Create an API key at https://managebetcodes.app/dashboard/api. The key must be stored only as a server-side Vercel environment variable.
 
-```env
-STATS_PROVIDER=api_football
-API_FOOTBALL_KEY=your_key_here
-# If using RapidAPI instead of api-sports.io direct:
-# API_FOOTBALL_BASE=https://api-football-v1.p.rapidapi.com/v3
-# API_FOOTBALL_HOST=api-football-v1.p.rapidapi.com
-```
+    SLIP_BUILDER=manage_bet_codes
+    MANAGE_BET_CODES_BASE_URL=https://api.managebetcodes.app/v1
+    MANAGE_BET_CODES_API_KEY=mbc_live_your_key
+    MANAGE_BET_CODES_BOOKMAKER=sportybet
+    MANAGE_BET_CODES_TIMEOUT_SECONDS=35
+    T24_REQUIRE_CALIBRATED=true
+    T24_CALIBRATION_FILE=data/historical_outcomes.csv
 
-Or FootyStats (corner-rate fields are validated before a fixture is used):
+For live fixtures and team statistics:
 
-```env
-STATS_PROVIDER=footystats
-FOOTYSTATS_KEY=your_key_here
-```
+    STATS_PROVIDER=api_football
+    API_FOOTBALL_KEY=your_api_football_key
+    API_FOOTBALL_BASE=https://v3.football.api-sports.io
 
-### Slip builder
+For conversational AI:
 
-For a real booking code, set `SLIP_BUILDER=api` and configure an authorised partner endpoint. A code is displayed only when the partner confirms every requested leg. The `mock` builder is a simulation and the `playwright` builder is intentionally disabled until exact market matching can be guaranteed.
+    LLM_PROVIDER=openai
+    OPENAI_API_KEY=your_openai_api_key
 
-```env
-SLIP_BUILDER=playwright
-ONEXBET_BASE_URL=https://1xbet.ng
-HEADLESS=false          # watch the browser while tuning selectors
-playwright install chromium
-```
+Supported bookmaker codes and market availability are read from Manage Bet Codes' live catalogue. Do not assume every bookmaker exposes event-market details or every market. A missing/ambiguous market is rejected.
 
-All DOM selectors live in `backend/builders/playwright_builder.py` → `SELECTORS` dict. Update them when 1xBet changes their markup; core flow stays untouched.
+## API endpoints
 
-Or plug a third-party booking API:
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Provider, AI and calibration readiness |
+| `POST /api/parse-rule` | Parse a natural-language request |
+| `POST /api/scout-matches` | Statistical analysis and ranking |
+| `POST /api/generate-code` | Build a code from explicit selections |
+| `POST /api/chat` | Conversational streaming pipeline |
+| `POST /api/pipeline` | Pipeline alias |
 
-```env
-SLIP_BUILDER=api
-BOOKING_API_URL=https://your-partner.example
-BOOKING_API_KEY=...
-```
+## Run locally
 
-### LLM parser (optional)
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-```
+The default provider settings are mock/demo. Mock mode never produces a bookmaker code.
 
-Without an LLM key the deterministic parser covers common corner-interval prompts.
+## Important boundaries
 
----
-
-## Architecture
-
-| Stage | Endpoint | Module |
-|-------|----------|--------|
-| 1 Parse rule | `POST /api/parse-rule` | `backend/parser.py` |
-| 2 Scout | `POST /api/scout-matches` | `backend/stats_engine.py` |
-| 3 Build slip | `POST /api/generate-code` | `backend/builders/*` |
-| Full SSE | `POST /api/pipeline` | `backend/main.py` |
-| UI | `GET /` | `frontend/index.html` |
-
-### Poisson model
-
-```
-λ = (0.55·c90_for + 0.45·opp_c90_against) × first15_share × (window_min / 15)
-P(X=0) = e^(-λ)
-fair_odds = 1 / P
-```
-
-Selections below `min_probability` are dropped; top `max_legs` by probability are returned.
-
-Missing / suspended 1xBet micro-markets are skipped; remaining legs still save.
-
----
-
-## Project tree
-
-```
-backend/
-  main.py
-  models.py
-  parser.py
-  stats_engine.py
-  builders/
-    __init__.py
-    mock_builder.py
-    playwright_builder.py
-    api_builder.py
-frontend/
-  index.html
-.env.example
-requirements.txt
-README.md
-```
-
----
-
-## License
-
-MIT — no warranty. Not financial advice. Use at your own risk.
+- Manage Bet Codes creates shareable booking codes; it does not place a stake or access bookmaker wallets.
+- No market is silently substituted.
+- No incomplete or unverified code is presented as successful.
+- Historical calibration is market- and period-specific. A calibrated full-match goals profile does not validate first-five-minute corners.
+- Betting outcomes are uncertain; no probability or selection guarantees a win.

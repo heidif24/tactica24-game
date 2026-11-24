@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SlipForge — Corner Rule Terminal</title>
+  <title>Tactica24 — Conversational Football Intelligence</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -46,21 +46,22 @@
     <header class="flex items-center justify-between border-b border-terminal-border pb-4">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-terminal-accent/20 flex items-center justify-center glow">
-          <span class="text-terminal-accent font-bold text-lg mono">SF</span>
+          <span class="text-terminal-accent font-bold text-lg mono">T24</span>
         </div>
         <div>
-          <h1 class="text-xl font-semibold tracking-tight">SlipForge</h1>
-          <p class="text-xs text-terminal-muted mono">NL rule → Poisson scout → 1xBet code</p>
+          <h1 class="text-xl font-semibold tracking-tight">Tactica24</h1>
+          <p class="text-xs text-terminal-muted mono">Conversational analysis → market validation → verified code</p>
         </div>
       </div>
       <div id="healthBadge" class="text-xs mono px-2 py-1 rounded border border-terminal-border text-terminal-muted">connecting…</div>
     </header>
 
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
-      <label class="block text-sm font-medium text-terminal-muted">Betting rule (plain English)</label>
+      <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>
+      <p class="text-xs text-terminal-warn">Analysis coverage: corners (including intervals where exact markets exist), full-match goals, BTTS and 1X2 where statistics support them. Minute-level goals/cards are never inferred from full-match averages. Verified historical calibration is required before a live code can be issued.</p>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
-        placeholder="Find upcoming football matches where Team 1 or Team 2 is statistically unlikely to get a corner in the first 5 minutes, minimum 75% probability, max 3 legs"></textarea>
+        placeholder="Example: Find upcoming matches where the away team is least likely to get a corner in the first 5 minutes. Use at most 2 selections and return a code only if the exact market is available."></textarea>
 
       <div class="flex flex-wrap gap-2">
         <button data-preset="No corner in first 5 mins (safest team), min 75%, max 3 legs"
@@ -83,24 +84,25 @@
             class="w-full mt-1 bg-terminal-bg border border-terminal-border rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:border-terminal-accent" />
         </div>
         <div>
-          <label class="text-xs text-terminal-muted">1xBet domain</label>
-          <select id="baseUrl"
+          <label class="text-xs text-terminal-muted">Target bookmaker</label>
+          <select id="bookmaker"
             class="w-full mt-1 bg-terminal-bg border border-terminal-border rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:border-terminal-accent">
-            <option value="">Use .env default</option>
-            <option value="https://1xbet.ng">1xbet.ng</option>
-            <option value="https://1xbet.com">1xbet.com</option>
-            <option value="https://1xbet.ke">1xbet.ke</option>
+            <option value="sportybet">SportyBet Nigeria</option>
+            <option value="onexbet">1xBet</option>
+            <option value="bet9ja">Bet9ja</option>
+            <option value="msport">MSport</option>
+            <option value="betking">BetKing</option>
           </select>
         </div>
       </div>
 
       <button id="runBtn"
         class="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-terminal-accent text-terminal-bg font-semibold text-sm hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed">
-        Find best code
+        Analyse & find code
       </button>
     </section>
 
-    <section class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
+    <section id="progressSection" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
       <div class="flex flex-wrap gap-3 mb-4" id="steps">
         <div data-step="1" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">1 · Parse</div>
         <div data-step="2" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">2 · Scout</div>
@@ -108,13 +110,13 @@
         <div data-step="4" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">4 · Code</div>
       </div>
       <div id="logFeed" class="h-40 overflow-y-auto mono text-xs space-y-1 text-terminal-muted bg-terminal-bg rounded-lg p-3 border border-terminal-border">
-        <div>Awaiting prompt…</div>
+        <div>Ready for your instructions…</div>
       </div>
     </section>
 
     <section id="results" class="hidden space-y-4">
       <div id="codeCard" class="hidden bg-terminal-panel border border-terminal-accent/40 rounded-xl p-5 glow">
-        <h2 class="text-sm font-semibold mb-2 text-terminal-accent uppercase tracking-wider">1xBet Booking Code</h2>
+        <h2 class="text-sm font-semibold mb-2 text-terminal-accent uppercase tracking-wider">Verified Booking Code</h2>
         <div class="flex items-center gap-3">
           <code id="bookingCode" class="mono text-2xl font-bold tracking-widest text-terminal-accent"></code>
           <button id="copyBtn" class="text-xs px-3 py-1.5 rounded border border-terminal-border hover:border-terminal-accent transition">Copy</button>
@@ -131,13 +133,14 @@
     </section>
 
     <footer class="text-center text-xs text-terminal-muted pt-4 border-t border-terminal-border">
-      SlipForge · Educational use only · Automating bookmakers may violate ToS
+      Tactica24 · Educational use only · Automating bookmakers may violate ToS
     </footer>
   </div>
 
   <script>
     // Same-origin when served by FastAPI; override via localStorage if needed
-    const API = localStorage.getItem('slipforge_api') || window.location.origin;
+    const API = localStorage.getItem('tactica24_api') || window.location.origin;
+    const conversationHistory = [];
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
@@ -167,13 +170,15 @@
 
     function log(msg, isError = false) {
       const feed = document.getElementById('logFeed');
-      if (feed.firstChild?.textContent === 'Awaiting prompt…') feed.innerHTML = '';
+      if (feed.firstChild?.textContent === 'Ready for your instructions…') feed.innerHTML = '';
       const line = document.createElement('div');
       line.className = 'log-line' + (isError ? ' text-terminal-danger' : '');
       line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
       feed.appendChild(line);
       feed.scrollTop = feed.scrollHeight;
     }
+
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[ch])); }
 
     function statusBadge(status) {
       const map = {
@@ -189,16 +194,16 @@
       document.getElementById('legsTable').innerHTML = legs.map(l => `
         <div class="border border-terminal-border rounded-lg p-4 bg-terminal-bg">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div class="font-medium text-sm">${l.home_team} vs ${l.away_team}</div>
+            <div class="font-medium text-sm">${escapeHtml(l.home_team)} vs ${escapeHtml(l.away_team)}</div>
             ${statusBadge(l.status)}
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mono text-terminal-muted">
-            <div><span class="text-terminal-text">${l.team_name}</span><br/>${l.direction} ${l.line} · ${l.time_window}</div>
-            <div>P = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>λ = ${l.lambda ?? l.lambda_}</div>
-            <div>Fair <span class="text-terminal-text">${l.fair_odds}</span><br/>1xBet ${l.found_odds ?? '—'}</div>
-            <div class="col-span-2 sm:col-span-1">${l.league}<br/><span class="text-[10px]">${l.market_note || ''}</span></div>
+            <div><span class="text-terminal-text">${escapeHtml(l.team_name)}</span><br/>${escapeHtml(l.direction)} ${escapeHtml(l.line)} · ${escapeHtml(l.time_window)}</div>
+            <div>P = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>λ = ${escapeHtml(l.lambda ?? l.lambda_)}</div>
+            <div>Fair <span class="text-terminal-text">${l.fair_odds}</span><br/>Bookmaker ${escapeHtml(l.found_odds ?? '—')}</div>
+            <div class="col-span-2 sm:col-span-1">${escapeHtml(l.league)}<br/><span class="text-[10px]">${escapeHtml(l.calibration_status || 'uncalibrated')} · n=${escapeHtml(l.calibration_samples || 0)}<br/>${escapeHtml(l.market_note || '')}</span></div>
           </div>
-          <p class="mt-2 text-[11px] text-terminal-muted">${l.reasoning || ''}</p>
+          <p class="mt-2 text-[11px] text-terminal-muted">${escapeHtml(l.reasoning || '')}</p>
         </div>`).join('');
       document.getElementById('results').classList.remove('hidden');
     }
@@ -224,7 +229,9 @@
 
       const maxLegs = +document.getElementById('maxLegs').value || 3;
       const minProb = (+document.getElementById('minProb').value || 75) / 100;
-      const baseUrl = document.getElementById('baseUrl').value || null;
+      const bookmaker = document.getElementById('bookmaker').value;
+      const context = [...conversationHistory];
+      document.getElementById('progressSection').classList.remove('hidden');
 
       document.getElementById('runBtn').disabled = true;
       document.getElementById('runBtn').textContent = 'Analysing…';
@@ -236,10 +243,10 @@
       log('Pipeline started…');
 
       try {
-        const resp = await fetch(`${API}/api/pipeline`, {
+        const resp = await fetch(`${API}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, base_url: baseUrl }),
+          body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, bookmaker, context }),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -265,6 +272,7 @@
             log(`[${event.stage_name}] ${event.message}`);
             if (event.done) {
               document.getElementById('results').classList.remove('hidden');
+              if (event.detail?.legs?.length) renderLegs(event.detail.legs);
               if (event.detail?.booking_code) {
                 showCode(event.detail.booking_code, event.detail.screenshot_b64);
               } else {
@@ -273,11 +281,13 @@
             }
           }
         }
+        conversationHistory.push(prompt);
+        if (conversationHistory.length > 8) conversationHistory.shift();
       } catch (err) {
         log(String(err), true);
       } finally {
         document.getElementById('runBtn').disabled = false;
-        document.getElementById('runBtn').textContent = 'Find best code';
+        document.getElementById('runBtn').textContent = 'Analyse & find code';
       }
     });
   </script>

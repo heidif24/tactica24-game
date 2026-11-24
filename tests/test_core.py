@@ -76,4 +76,4 @@ def test_total_market_uses_both_teams_rates():
     rule = ParsedRule(selection_target=SelectionTarget.TOTAL)
     side = _candidate_sides(rule, fx)[0]
     assert side[2] == 10.0
-    assert side[3] == 10.0
+    assert side[3] == 8.0

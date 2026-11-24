@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.builders import get_builder
 from backend.models import (
@@ -34,11 +34,11 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("slipforge")
+logger = logging.getLogger("tactica24")
 
 app = FastAPI(
-    title="SlipForge",
-    description="Natural-language corner rules → statistical scouting → 1xBet booking codes",
+    title="Tactica24",
+    description="Conversational football analysis, exact market validation, and verified booking codes",
     version="1.0.0",
 )
 
@@ -46,7 +46,7 @@ origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins if origins != ["*"] else ["*"],
-    allow_credentials=True,
+    allow_credentials=origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -69,10 +69,30 @@ async def health():
     builder_configured = (
         slip_builder == "mock"
         or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
+        or (slip_builder in ("manage_bet_codes", "mbc") and bool(os.getenv("MANAGE_BET_CODES_API_KEY")))
+    )
+    market_mapping_ready = slip_builder not in ("manage_bet_codes", "mbc") or bool(os.getenv("MANAGE_BET_CODES_API_KEY"))
+    from backend.calibration import calibration_dataset_status
+    calibration_status = calibration_dataset_status()
+    calibration_data_ready = calibration_status["ready"]
+    llm_provider = os.getenv("LLM_PROVIDER", "none").lower()
+    llm_configured = (
+        (llm_provider == "openai" and bool(os.getenv("OPENAI_API_KEY")))
+        or (llm_provider == "anthropic" and bool(os.getenv("ANTHROPIC_API_KEY")))
+        or llm_provider == "none"
+    )
+    operational = (
+        not demo_mode and stats_configured and builder_configured
+        and market_mapping_ready and calibration_data_ready and llm_configured
     )
     return {
-        "status": "degraded" if demo_mode or not stats_configured or not builder_configured else "ok",
-        "operational": not demo_mode and stats_configured and builder_configured,
+        "status": "ok" if operational else "degraded",
+        "operational": operational,
+        "market_mapping_ready": market_mapping_ready,
+        "calibration_data_ready": calibration_data_ready,
+        "calibration_rows": calibration_status["rows"],
+        "calibration_profiles": calibration_status["profiles"],
+        "llm_configured": llm_configured,
         "demo_mode": demo_mode,
         "stats_configured": stats_configured,
         "builder_configured": builder_configured,
@@ -123,6 +143,8 @@ class PipelineRequest(BaseModel):
     max_legs: Optional[int] = None
     min_probability: Optional[float] = None
     base_url: Optional[str] = None
+    bookmaker: Optional[str] = None
+    context: list[str] = Field(default_factory=list)
 
 
 def _sse(event: PipelineProgress) -> str:
@@ -130,6 +152,7 @@ def _sse(event: PipelineProgress) -> str:
 
 
 @app.post("/api/pipeline")
+@app.post("/api/chat")
 async def api_pipeline(body: PipelineRequest):
     """Run all 4 stages and stream progress via Server-Sent Events."""
 
@@ -140,8 +163,11 @@ async def api_pipeline(body: PipelineRequest):
                 message="Translating natural-language prompt into filter criteria…",
             ))
             await asyncio.sleep(0.1)
+            parse_prompt = body.prompt
+            if body.context and os.getenv('LLM_PROVIDER', 'none').lower() != 'none':
+                parse_prompt = '\n'.join(body.context[-8:] + [f'Current request: {body.prompt}'])
             parsed = await parse_rule(ParseRuleRequest(
-                prompt=body.prompt,
+                prompt=parse_prompt,
                 max_legs=body.max_legs,
                 min_probability=body.min_probability,
             ))
@@ -157,7 +183,7 @@ async def api_pipeline(body: PipelineRequest):
 
             yield _sse(PipelineProgress(
                 stage=2, stage_name="Scanning Fixture Stats",
-                message="Fetching fixtures and computing Poisson early-interval probabilities…",
+                message=f"Analysing {parsed.rule.market_category} markets for {parsed.rule.time_window} using available match statistics…",
             ))
             await asyncio.sleep(0.1)
             scout = await scout_matches(parsed.rule)
@@ -179,15 +205,15 @@ async def api_pipeline(body: PipelineRequest):
                 return
 
             yield _sse(PipelineProgress(
-                stage=3, stage_name="Matching 1xBet Markets",
-                message="Resolving markets and building betslip…",
+                stage=3, stage_name="Resolving Bookmaker Markets",
+                message=f"Discovering exact {parsed.rule.market_category} markets at {body.bookmaker or os.getenv('MANAGE_BET_CODES_BOOKMAKER', 'configured bookmaker')} before strict resolution…",
             ))
             await asyncio.sleep(0.05)
-            builder = get_builder()
+            builder = get_builder(bookmaker=body.bookmaker)
             result = await builder.build(scout.selections, base_url=body.base_url)
             yield _sse(PipelineProgress(
-                stage=3, stage_name="Matching 1xBet Markets",
-                message=f"Builder={result.builder_used}. " + " | ".join(result.logs[-5:]),
+                stage=3, stage_name="Resolving Bookmaker Markets",
+                message=f"Provider={result.builder_used}. " + " | ".join(result.logs[-5:]),
                 detail={
                     "legs": [l.model_dump(by_alias=True) for l in result.legs],
                     "logs": result.logs,
@@ -197,10 +223,10 @@ async def api_pipeline(body: PipelineRequest):
             code_msg = (
                 f"Booking code: {result.booking_code}"
                 if result.booking_code
-                else "No booking code (no matched legs or builder skipped save)"
+                else "No verified booking code (markets unavailable, incomplete, or provider not configured)"
             )
             yield _sse(PipelineProgress(
-                stage=4, stage_name="Saving Betslip & Extracting Code",
+                stage=4, stage_name="Verifying Booking Code",
                 message=code_msg,
                 detail={
                     "booking_code": result.booking_code,

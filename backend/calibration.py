@@ -103,3 +103,28 @@ def calibrate_probability(
     # Use the lower 95% Wilson confidence bound rather than the raw hit rate.
     # This is intentionally conservative and is not a guarantee of future wins.
     return round(_wilson_lower(wins, len(in_bin)), 4), len(in_bin)
+
+
+def calibration_dataset_status() -> dict:
+    path = Path(os.getenv("T24_CALIBRATION_FILE", "data/historical_outcomes.csv"))
+    if not path.exists():
+        return {"ready": False, "rows": 0, "profiles": 0}
+    try:
+        rows = _load_rows(str(path.resolve()), path.stat().st_mtime)
+    except (OSError, ValueError):
+        return {"ready": False, "rows": 0, "profiles": 0}
+    groups: dict[tuple[str, str, str], list[dict]] = {}
+    for row in rows:
+        key = (row["market_category"], row["sub_market"], row["time_window"])
+        groups.setdefault(key, []).append(row)
+    profiles = 0
+    for values in groups.values():
+        if len(values) < MIN_TOTAL_SAMPLES:
+            continue
+        bins: dict[int, int] = {}
+        for row in values:
+            bucket = min(19, int(row["p"] / BIN_WIDTH))
+            bins[bucket] = bins.get(bucket, 0) + 1
+        if any(count >= MIN_BIN_SAMPLES for count in bins.values()):
+            profiles += 1
+    return {"ready": profiles > 0, "rows": len(rows), "profiles": profiles}

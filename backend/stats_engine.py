@@ -29,9 +29,15 @@ DEFAULT_FIRST15_SHARE = 0.22
 
 
 def window_bounds(window: str) -> tuple[float, float]:
+    if window in ("full_match", "90", "match"):
+        return 0.0, 90.0
+    if window == "00:00-44:59":
+        return 0.0, 45.0
+    if window == "45:00-89:59":
+        return 45.0, 90.0
     m = re.match(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", window)
     if not m:
-        return 0.0, 5.0
+        raise ValueError(f"Invalid interval: {window}")
     start = int(m.group(1)) * 60 + int(m.group(2))
     end = int(m.group(3)) * 60 + int(m.group(4))
     if end < start:
@@ -78,8 +84,11 @@ def interval_lambda(
     blend: float = 0.55,
 ) -> float:
     rate_90 = blend * c90_for + (1 - blend) * c90_against
-    share = first15_share * (window_min / 15.0)
-    share = min(max(share, 0.02), 0.45)
+    if window_min >= 89.5:
+        share = 1.0
+    else:
+        share = first15_share * (window_min / 15.0)
+        share = min(max(share, 0.02), 0.45)
     return rate_90 * share
 
 
@@ -212,10 +221,15 @@ class ApiFootballProvider(StatsProvider):
                 f"API-Football did not supply usable corner totals for team {team_id}; "
                 "the app will not substitute assumed team averages"
             )
+        goals = stats.get("goals") or {}
+        goals_for = ((goals.get("for") or {}).get("total") or {}).get("total")
+        goals_against = ((goals.get("against") or {}).get("total") or {}).get("total")
         rates = {
             "c90_for": round(float(corners_for) / float(fixtures_played), 2),
             "c90_against": 4.8,
             "first15_share": DEFAULT_FIRST15_SHARE,
+            "g90_for": round(float(goals_for) / float(fixtures_played), 3) if goals_for is not None else None,
+            "g90_against": round(float(goals_against) / float(fixtures_played), 3) if goals_against is not None else None,
         }
         self._stat_cache[cache_key] = rates
         return rates
@@ -315,11 +329,13 @@ class ApiFootballProvider(StatsProvider):
                     team_id=str(home_id), team_name=home_name,
                     c90_for=h_stats["c90_for"], c90_against=h_c90_against,
                     first15_share=h_stats.get("first15_share", DEFAULT_FIRST15_SHARE),
+                    g90_for=h_stats.get("g90_for"), g90_against=h_stats.get("g90_against"),
                 ),
                 away_stats=TeamCornerStats(
                     team_id=str(away_id), team_name=away_name,
                     c90_for=a_stats["c90_for"], c90_against=a_c90_against,
                     first15_share=a_stats.get("first15_share", DEFAULT_FIRST15_SHARE),
+                    g90_for=a_stats.get("g90_for"), g90_against=a_stats.get("g90_against"),
                 ),
             ))
 
@@ -375,6 +391,10 @@ class FootyStatsProvider(StatsProvider):
             a_for = float(row["team_b_corners_per_match"])
             h_against = float(row.get("team_a_corners_against_per_match") or 4.8)
             a_against = float(row.get("team_b_corners_against_per_match") or 4.8)
+            h_goals = row.get("team_a_goals_per_match")
+            a_goals = row.get("team_b_goals_per_match")
+            h_goals_against = row.get("team_a_goals_against_per_match")
+            a_goals_against = row.get("team_b_goals_against_per_match")
 
             st_raw = (row.get("status") or "incomplete").lower()
             match_status = MatchStatus.LIVE if st_raw in ("live", "incomplete") and row.get("time") not in (None, "0") else MatchStatus.UPCOMING
@@ -400,10 +420,14 @@ class FootyStatsProvider(StatsProvider):
                 home_stats=TeamCornerStats(
                     team_id=f"{fid}_h", team_name=home_name,
                     c90_for=h_for, c90_against=h_against,
+                    g90_for=float(h_goals) if h_goals is not None else None,
+                    g90_against=float(h_goals_against) if h_goals_against is not None else None,
                 ),
                 away_stats=TeamCornerStats(
                     team_id=f"{fid}_a", team_name=away_name,
                     c90_for=a_for, c90_against=a_against,
+                    g90_for=float(a_goals) if a_goals is not None else None,
+                    g90_against=float(a_goals_against) if a_goals_against is not None else None,
                 ),
             ))
 
@@ -423,33 +447,101 @@ def get_provider() -> StatsProvider:
 
 # ── Scouting engine ─────────────────────────────────────────────────────────
 
+def _poisson_cdf(lam: float, line: float) -> float:
+    k = int(math.floor(line))
+    return sum(math.exp(-lam) * lam**i / math.factorial(i) for i in range(k + 1))
+
+
+def _goal_rate(for_rate: float | None, against_rate: float | None) -> float | None:
+    if for_rate is None or against_rate is None:
+        return None
+    return max(0.05, 0.55 * for_rate + 0.45 * against_rate)
+
+
+def _result_probabilities(home_lam: float, away_lam: float) -> dict[str, float]:
+    def dist(lam: float) -> list[float]:
+        values = [math.exp(-lam)]
+        for i in range(1, 13):
+            values.append(values[-1] * lam / i)
+        total = sum(values)
+        return [v / total for v in values]
+    hp, ap = dist(home_lam), dist(away_lam)
+    result = {"home": 0.0, "draw": 0.0, "away": 0.0}
+    for h, ph in enumerate(hp):
+        for a, pa in enumerate(ap):
+            result["home" if h > a else "draw" if h == a else "away"] += ph * pa
+    return result
+
+
 async def scout_matches(rule: ParsedRule) -> ScoutResponse:
+    from backend.calibration import calibrate_probability
+
     provider = get_provider()
     fixtures = await provider.fetch_fixtures(rule.match_status)
-    w_min = window_minutes(rule.time_window)
     candidates: list[Selection] = []
+    category = rule.market_category.lower()
+    is_full_match = rule.time_window in ("full_match", "90", "match")
 
     for fx in fixtures:
         if not _live_fixture_window_is_future(fx, rule.time_window):
             continue
-        sides = _candidate_sides(rule, fx)
-        for side, team_name, c_for, c_against, first15 in sides:
-            lam = interval_lambda(c_for, c_against, w_min, first15)
-            if rule.direction == Direction.UNDER and rule.line <= 0.5:
-                prob = poisson_zero(lam)
-            elif rule.direction == Direction.UNDER:
-                k = int(math.floor(rule.line))
-                prob = sum(math.exp(-lam) * lam**i / math.factorial(i) for i in range(k + 1))
-            else:
-                k = int(math.floor(rule.line))
-                prob = 1.0 - sum(math.exp(-lam) * lam**i / math.factorial(i) for i in range(k + 1))
+        h, a = fx.home_stats, fx.away_stats
+        computed: list[tuple[str, str, float, float, str]] = []
 
-            if prob < rule.min_probability:
+        if category == "corners":
+            w_min = window_minutes(rule.time_window)
+            for side, team_name, c_for, c_against, first15 in _candidate_sides(rule, fx):
+                lam = interval_lambda(c_for, c_against, w_min, first15)
+                prob = _poisson_cdf(lam, rule.line)
+                if rule.direction == Direction.OVER:
+                    prob = 1.0 - prob
+                computed.append((side, team_name, lam, prob, "over" if rule.direction == Direction.OVER else "under"))
+        elif category in ("goals", "btts", "result"):
+            # Season aggregates cannot support exact minute-interval predictions.
+            if not is_full_match:
                 continue
+            h_lam = _goal_rate(h.g90_for, a.g90_against)
+            a_lam = _goal_rate(a.g90_for, h.g90_against)
+            if h_lam is None or a_lam is None:
+                continue
+            if category == "goals":
+                if rule.selection_target == SelectionTarget.HOME:
+                    lam, side, team_name = h_lam, "home", h.team_name
+                elif rule.selection_target == SelectionTarget.AWAY:
+                    lam, side, team_name = a_lam, "away", a.team_name
+                else:
+                    lam, side, team_name = h_lam + a_lam, "total", f"{h.team_name} + {a.team_name}"
+                prob = _poisson_cdf(lam, rule.line)
+                if rule.direction == Direction.OVER:
+                    prob = 1.0 - prob
+                computed.append((side, team_name, lam, prob, "over" if rule.direction == Direction.OVER else "under"))
+            elif category == "btts":
+                yes_prob = (1.0 - math.exp(-h_lam)) * (1.0 - math.exp(-a_lam))
+                outcome = (rule.outcome or "Yes").lower()
+                prob = yes_prob if outcome == "yes" else 1.0 - yes_prob
+                computed.append(("both", f"{h.team_name} + {a.team_name}", h_lam + a_lam, prob, outcome))
+            else:
+                side = rule.selection_target.value
+                probs = _result_probabilities(h_lam, a_lam)
+                if side not in probs:
+                    continue
+                computed.append((side, f"{h.team_name} vs {a.team_name}", h_lam + a_lam, probs[side], side))
+        else:
+            # Cards and other categories require observed event-level data.
+            continue
 
-            reasoning = (
-                f"{team_name}: c90_for={c_for:.1f}, opp c90_against≈{c_against:.1f}, "
-                f"window={w_min:.1f}m → λ={lam:.3f}, P={prob:.1%}, fair={fair_odds(prob)}"
+        for side, team_name, lam, raw_prob, outcome in computed:
+            if raw_prob < rule.min_probability:
+                continue
+            calibrated, sample_count = calibrate_probability(
+                category, rule.sub_market, rule.time_window, raw_prob
+            )
+            final_prob = calibrated if calibrated is not None else raw_prob
+            status = "calibrated" if calibrated is not None else "uncalibrated"
+            reason = (
+                f"{category} model: lambda={lam:.3f}; raw P={raw_prob:.1%}; "
+                + (f"conservative calibrated P={final_prob:.1%} from {sample_count} historical forecasts"
+                   if calibrated is not None else "insufficient out-of-sample calibration evidence")
             )
             candidates.append(Selection(
                 fixture_id=fx.fixture_id,
@@ -463,19 +555,20 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
                 line=rule.line,
                 direction=rule.direction.value,
                 lambda_=round(lam, 4),
-                probability=round(prob, 4),
-                fair_odds=fair_odds(prob),
-                reasoning=reasoning,
+                probability=round(final_prob, 4),
+                fair_odds=fair_odds(final_prob),
+                reasoning=reason,
+                market_category=category,
+                sub_market=rule.sub_market,
+                bookmaker_outcome=rule.outcome or outcome.title(),
+                calibration_status=status,
+                calibration_samples=sample_count,
+                raw_probability=round(raw_prob, 4),
+                calibrated_probability=round(calibrated, 4) if calibrated is not None else None,
             ))
 
-    candidates.sort(key=lambda s: s.probability, reverse=True)
-    top = candidates[: rule.max_legs]
-    return ScoutResponse(
-        selections=top,
-        scanned_fixtures=len(fixtures),
-        provider=provider.name,
-    )
-
+    candidates.sort(key=lambda s: (s.calibration_status == "calibrated", s.probability), reverse=True)
+    return ScoutResponse(selections=candidates[: rule.max_legs], scanned_fixtures=len(fixtures), provider=provider.name)
 
 def _candidate_sides(
     rule: ParsedRule, fx: Fixture

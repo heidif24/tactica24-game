@@ -74,7 +74,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
         <div>
           <label class="text-xs text-terminal-muted">Max legs</label>
-          <input id="maxLegs" type="number" min="1" max="10" value="3"
+          <input id="maxLegs" type="number" min="1" max="10" value="1"
             class="w-full mt-1 bg-terminal-bg border border-terminal-border rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:border-terminal-accent" />
         </div>
         <div>
@@ -141,8 +141,11 @@
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
-      el.textContent = `ok · stats=${d.stats_provider} · builder=${d.slip_builder}`;
-      el.classList.add('text-terminal-accent', 'border-terminal-accent/40');
+      el.textContent = d.operational
+        ? 'live · stats=' + d.stats_provider + ' · builder=' + d.slip_builder
+        : 'demo / setup needed · stats=' + d.stats_provider + ' · builder=' + d.slip_builder;
+      el.classList.add(d.operational ? 'text-terminal-accent' : 'text-terminal-warn');
+      if (!d.operational) el.classList.add('border-terminal-warn/40');
     }).catch(() => {
       document.getElementById('healthBadge').textContent = 'backend offline';
       document.getElementById('healthBadge').classList.add('text-terminal-danger');

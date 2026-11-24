@@ -71,8 +71,8 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
 
     # line
     line = 0.5
-    line_m = re.search(r"under\s*(\d+(?:\.\d+)?)", text) or re.search(
-        r"(\d+(?:\.\d+)?)\s*corners?", text
+    line_m = re.search(r"(?:under|over)\s*(\d+(?:\.\d+)?)", text) or re.search(
+        r"(\d+(?:\.\d+)?)\s*(?:corners?|goals?|cards?)", text
     )
     if line_m:
         line = float(line_m.group(1))

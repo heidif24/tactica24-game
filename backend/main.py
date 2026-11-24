@@ -129,7 +129,7 @@ async def api_scout_matches(body: ScoutRequest):
 @app.post("/api/generate-code", response_model=GenerateCodeResponse)
 async def api_generate_code(body: GenerateCodeRequest):
     try:
-        builder = get_builder()
+        builder = get_builder(bookmaker=body.bookmaker)
         return await builder.build(body.selections, base_url=body.base_url)
     except Exception as exc:
         logger.exception("generate-code failed")

@@ -1,4 +1,4 @@
-"""Slip builders: mock, playwright, external API."""
+"""Slip builders: mock simulation and authorised external booking API."""
 
 from __future__ import annotations
 
@@ -15,11 +15,15 @@ class SlipBuilder(Protocol):
 
 def get_builder() -> SlipBuilder:
     name = os.getenv("SLIP_BUILDER", "mock").lower()
-    if name == "playwright":
-        from backend.builders.playwright_builder import Playwright1xBetBuilder
-        return Playwright1xBetBuilder()
     if name == "api":
         from backend.builders.api_builder import ExternalCodeApiBuilder
         return ExternalCodeApiBuilder()
-    from backend.builders.mock_builder import MockSlipBuilder
-    return MockSlipBuilder()
+    if name == "playwright":
+        raise RuntimeError(
+            "Unverified bookmaker browser automation is disabled. "
+            "Use an authorised booking API; do not rely on generic odds-button selectors."
+        )
+    if name == "mock":
+        from backend.builders.mock_builder import MockSlipBuilder
+        return MockSlipBuilder()
+    raise RuntimeError(f"Unsupported SLIP_BUILDER={name!r}; choose 'mock' or 'api'")

@@ -49,7 +49,7 @@ def test_mock_builder_never_mints_a_bookmaker_code():
     result = asyncio.run(MockSlipBuilder().build([selection]))
     assert result.booking_code is None
     assert result.legs[0].status == "skipped"
-    assert "no bookmaker" in " ".join(result.logs).lower()
+    assert "no real booking code" in " ".join(result.logs).lower()
 
 
 def test_live_fixture_is_skipped_when_requested_window_has_started():

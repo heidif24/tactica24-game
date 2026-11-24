@@ -94,7 +94,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         min_prob = float(raw) / 100 if float(raw) > 1 else float(raw)
 
     # legs
-    max_legs = 3
+    max_legs = 1
     legs_m = re.search(r"max\s*(\d+)\s*legs?", text) or re.search(
         r"(\d+)\s*legs?", text
     )

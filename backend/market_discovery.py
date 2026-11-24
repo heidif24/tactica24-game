@@ -140,7 +140,7 @@ class ManageBetCodesMarketDiscovery:
         """Return an exact provider pick descriptor or None when not found."""
         async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=8.0)) as client:
             bookmakers = await self._catalog(client, "bookmakers")
-            book_items = self._items(bookmakers, "bookmakers", "items")
+            book_items = self._items(bookmakers, "bookmakers", "items", "data")
             book = next(
                 (b for b in book_items if _norm(_get_first(b, "key", "id", "slug", "name")) == _norm(bookmaker)),
                 None,
@@ -205,9 +205,13 @@ class ManageBetCodesMarketDiscovery:
                 return None
 
             market, label = candidates[0]
-            outcomes = market.get("outcomes") or market.get("selections") or []
+            outcomes = market.get("outcomes") or market.get("selections") or market.get("valid_outcomes") or []
             if not isinstance(outcomes, list):
                 return None
+            outcomes = [
+                item if isinstance(item, dict) else {"name": str(item)}
+                for item in outcomes
+            ]
             expected = _norm(getattr(selection, "bookmaker_outcome", None) or selection.direction)
             if selection.selection_side == "home" and wanted_category == "result":
                 expected = "home"
@@ -224,6 +228,8 @@ class ManageBetCodesMarketDiscovery:
                     continue
                 name = _norm(_get_first(outcome, "canonical", "name", "label", "outcome"))
                 line = _get_first(outcome, "line", "handicap", "total")
+                if line is None:
+                    line = _get_first(market, "line", "handicap", "total")
                 if expected and expected not in name:
                     continue
                 if line is not None:
@@ -248,6 +254,6 @@ class ManageBetCodesMarketDiscovery:
                 "key": str(key) if key else None,
                 "market": str(canonical_market),
                 "outcome": str(canonical_outcome) if canonical_outcome else None,
-                "line": str(_get_first(outcome, "line", "handicap", "total") or selection.line),
+                "line": str(_get_first(outcome, "line", "handicap", "total") or _get_first(market, "line", "handicap", "total") or selection.line),
                 "odds": str(odds) if odds is not None else None,
             }

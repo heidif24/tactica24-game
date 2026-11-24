@@ -18,12 +18,14 @@ class SelectionTarget(str, Enum):
     HOME = "home"
     AWAY = "away"
     BOTH = "both"
+    DRAW = "draw"
     TOTAL = "total"
 
 class ParsedRule(BaseModel):
     sport: str = "football"
     market_category: str = "corners"
     sub_market: str = "team_interval_corners"
+    outcome: Optional[str] = None
     time_window: str = Field(default="00:00-04:59", description="Interval in MM:SS-MM:SS or shorthand")
     selection_target: SelectionTarget = SelectionTarget.LOWEST_PROBABILITY_TEAM
     line: float = 0.5
@@ -55,6 +57,8 @@ class TeamCornerStats(BaseModel):
     c90_for: float
     c90_against: float
     first15_share: float = 0.22
+    g90_for: Optional[float] = None
+    g90_against: Optional[float] = None
 
 class Fixture(BaseModel):
     fixture_id: str
@@ -90,6 +94,12 @@ class Selection(BaseModel):
     bookmaker_market: Optional[str] = None
     bookmaker_outcome: Optional[str] = None
     bookmaker_line: Optional[str] = None
+    market_category: str = "corners"
+    sub_market: str = "team_interval_corners"
+    bookmaker_event_id: Optional[str] = None
+    bookmaker_pick_key: Optional[str] = None
+    calibration_status: str = "uncalibrated"
+    calibration_samples: int = 0
     model_config = {"populate_by_name": True}
 
 class ScoutRequest(BaseModel):

@@ -146,7 +146,7 @@ async def api_pipeline(body: PipelineRequest):
             await asyncio.sleep(0.1)
             parse_prompt = body.prompt
             if body.context and os.getenv('LLM_PROVIDER', 'none').lower() != 'none':
-                parse_prompt = '\\n'.join(body.context[-8:] + [f'Current request: {body.prompt}'])
+                parse_prompt = '\n'.join(body.context[-8:] + [f'Current request: {body.prompt}'])
             parsed = await parse_rule(ParseRuleRequest(
                 prompt=parse_prompt,
                 max_legs=body.max_legs,

@@ -6,6 +6,8 @@ fixture, period, category, line and outcome before a pick can be resolved.
 from __future__ import annotations
 
 import re
+import json
+import uuid
 from typing import Any
 
 import httpx
@@ -49,6 +51,49 @@ class ManageBetCodesMarketDiscovery:
         response = await client.get(f"{self.base}/{path}")
         response.raise_for_status()
         return response.json()
+
+    async def _mcp_tool(self, client: httpx.AsyncClient, name: str, arguments: dict) -> Any:
+        response = await client.post(
+            f"{self.base}/mcp",
+            headers={**self._headers(), "Accept": "application/json, text/event-stream"},
+            json={
+                "jsonrpc": "2.0",
+                "id": str(uuid.uuid4()),
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            },
+        )
+        response.raise_for_status()
+        try:
+            envelope = response.json()
+        except ValueError:
+            envelope = None
+            for line in response.text.splitlines():
+                if line.startswith("data:"):
+                    try:
+                        envelope = json.loads(line[5:].strip())
+                    except ValueError:
+                        continue
+            if envelope is None:
+                raise ValueError("Manage Bet Codes MCP returned an unreadable response")
+        if envelope.get("error"):
+            raise ValueError(str(envelope["error"]))
+        result = envelope.get("result") or {}
+        if result.get("isError"):
+            raise ValueError(str(result.get("content") or "Manage Bet Codes MCP tool failed"))
+        structured = result.get("structuredContent")
+        if isinstance(structured, dict):
+            return structured
+        content = result.get("content") or []
+        for block in content:
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                try:
+                    parsed = json.loads(block["text"])
+                    if isinstance(parsed, dict):
+                        return parsed
+                except ValueError:
+                    continue
+        return result
 
     @staticmethod
     def _items(payload: Any, *names: str) -> list[dict]:
@@ -155,7 +200,7 @@ class ManageBetCodesMarketDiscovery:
             search_response = await client.post(
                 f"{self.base}/events/search",
                 headers=self._headers(),
-                json={"bookmaker": bookmaker, "queries": [f"{selection.home_team} vs {selection.away_team}"]},
+                json={"bookmaker": bookmaker, "queries": [f"{selection.home_team} vs {selection.away_team}"], "sport": "football", "include_markets": True},
             )
             search_response.raise_for_status()
             search_payload = search_response.json()
@@ -167,6 +212,9 @@ class ManageBetCodesMarketDiscovery:
             if len(matching) != 1:
                 return None
             event = matching[0]
+            confidence = str(_get_first(event, "confidence", "match_confidence") or "exact").lower()
+            if confidence != "exact":
+                return None
             event_id = _get_first(event, "event_id", "id", "fixture_id")
             if not event_id:
                 return None
@@ -177,19 +225,16 @@ class ManageBetCodesMarketDiscovery:
             supports_markets = book.get("supports_markets", True) if book else True
 
             if supports_markets:
-                response = await client.get(
-                    f"{self.base}/events/{event_id}/markets",
-                    headers=self._headers(),
-                    params={"bookmaker": bookmaker},
+                payload = await self._mcp_tool(
+                    client,
+                    "mbc_get_event_markets",
+                    {"bookmaker": bookmaker, "event_id": str(event_id)},
                 )
-                response.raise_for_status()
-                payload = response.json()
                 markets = self._items(payload, "markets", "items", "data")
             else:
                 # Some bookmakers support search/resolve but do not expose a
-                # per-event market catalogue. Use the provider's canonical
-                # market catalogue, then let resolve perform the final exact
-                # event-specific validation.
+                # per-event market catalogue. Use the public canonical market
+                # catalogue; the resolver then validates this exact event.
                 payload = await self._catalog(client, "markets")
                 markets = self._items(payload, "markets", "items", "data")
 

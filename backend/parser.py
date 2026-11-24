@@ -53,9 +53,9 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
 
     # Explicit period only. A missing period defaults to full match for
     # mainstream markets; interval markets require an explicit interval.
-    explicit_period = bool(re.search(r"first\\s*\\d+|\\d{1,2}:\\d{2}\\s*[-–]\\s*\\d{1,2}:\\d{2}|first half|second half", text))
+    explicit_period = bool(re.search(r"first\s*\d+|\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}|first half|second half", text))
     window = "full_match"
-    period_m = re.search(r"(\\d{1,2}:\\d{2})\\s*[-–]\\s*(\\d{1,2}:\\d{2})", text)
+    period_m = re.search(r"(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})", text)
     if period_m:
         window = f"{period_m.group(1)}-{period_m.group(2)}"
     elif "second half" in text:
@@ -63,7 +63,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     elif "first half" in text:
         window = "00:00-44:59"
     else:
-        first_m = re.search(r"first\\s*(\\d+)\\s*(?:minutes?|mins?|m)?", text)
+        first_m = re.search(r"first\s*(\d+)\s*(?:minutes?|mins?|m)?", text)
         if first_m:
             mins = max(1, min(int(first_m.group(1)), 90))
             last = mins * 60 - 1
@@ -90,7 +90,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     outcome = None
     if "both teams to score" in text or "btts" in text:
         category = "btts"
-        outcome = "No" if re.search(r"\\bno\\b|not score", text) else "Yes"
+        outcome = "No" if re.search(r"\bno\b|not score", text) else "Yes"
     elif "1x2" in text or "match result" in text or "to win" in text or "winner" in text:
         category = "result"
     elif "card" in text:

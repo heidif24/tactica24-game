@@ -46,23 +46,23 @@ class ManageBetCodesBuilder:
             outcome = getattr(item, "bookmaker_outcome", None)
             line = getattr(item, "bookmaker_line", None)
             # An interval prediction cannot be silently converted into a
-            # full-match corner market. Require an explicit canonical market.
-            if not market or not outcome:
+            # full-match corner market. Check the requested time period first.
+            if item.time_window not in ("full_match", "00:00-89:59", "00:00-90:00"):
                 note = (
-                    "No exact bookmaker market mapping is attached to this "
-                    "selection. Interval markets must be discovered and "
-                    "matched explicitly; no substitute market was selected."
+                    f"Requested interval {item.time_window} is not a full-match "
+                    "market mapping. Booking was stopped rather than changing "
+                    "the time period."
                 )
                 legs = [s.model_copy(update={"status": "unavailable", "market_note": note}) for s in selections]
                 return GenerateCodeResponse(
                     booking_code=None, legs=legs, builder_used="manage_bet_codes",
                     logs=logs + [note],
                 )
-            if item.time_window not in ("full_match", "00:00-89:59", "00:00-90:00"):
+            if not market or not outcome:
                 note = (
-                    f"Requested interval {item.time_window} is not a full-match "
-                    "market mapping. Booking was stopped rather than changing "
-                    "the time period."
+                    "No exact bookmaker market mapping is attached to this "
+                    "selection. The requested market must be discovered and "
+                    "matched explicitly; no substitute market was selected."
                 )
                 legs = [s.model_copy(update={"status": "unavailable", "market_note": note}) for s in selections]
                 return GenerateCodeResponse(

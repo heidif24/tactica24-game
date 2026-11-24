@@ -55,7 +55,7 @@ class TeamCornerStats(BaseModel):
     team_id: str
     team_name: str
     c90_for: float
-    c90_against: float
+    c90_against: Optional[float]
     first15_share: float = 0.22
     g90_for: Optional[float] = None
     g90_against: Optional[float] = None

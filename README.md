@@ -1,143 +1,86 @@
-# SlipForge
+# Tactica24
 
-**Natural-language betting rule → Poisson corner scouting → 1xBet booking code**
+**Conversational football analysis → fixture and market validation → verified bookmaker booking code.**
 
-Complete, runnable end-to-end app. Default mode (`mock` + `mock`) needs **zero API keys** and demonstrates the analysis pipeline with sample fixtures. It does **not** create a real bookmaker code.
+Tactica24 is designed to interpret a natural-language request, analyse eligible fixtures, rank candidate selections, validate the exact market at a chosen bookmaker, and return a code only after the booking provider confirms it. It does not place stakes.
 
-> **Disclaimer**  
-> Automating 1xBet (or any bookmaker) almost certainly violates their Terms of Service and can get accounts banned. The Playwright builder is included for research; prefer `SLIP_BUILDER=mock` or an official partner API.
+## Important operating rules
 
----
+- Demo mode never creates a real booking code.
+- A model probability is an estimate, not a guaranteed win rate. The existing corner Poisson model is not yet calibrated against a large, timestamped historical dataset.
+- A market must match the requested event, market, outcome, line and time period. The system must not silently replace an unavailable interval market with a full-match market.
+- Booking is strict: every requested pick must resolve and the resulting code must pass provider load-back verification. Partial or unverified codes are not displayed as successful.
+- Manage Bet Codes is a third-party booking-code service, not a bookmaker. It charges API credits for booking and its available markets depend on the target bookmaker.
 
-> **Production-readiness note (24 Nov 2026)**  
-> The default `mock` providers are demonstration-only. They do not query live fixtures or a bookmaker and will never issue a booking code. The health endpoint reports this as `degraded`. A real code is returned only when a configured booking API confirms every requested leg and returns a valid code. The unverified Playwright bookmaker automation path is disabled because its generic odds selectors could click the wrong market.
->
-> The current Poisson output is a model estimate, not a proven or calibrated success probability. The first-15-minute share is an assumption unless the data source supplies interval-level history. No amount of model ranking guarantees a winning bet. Before treating the output as decision-grade, the engine needs historical backtesting, probability calibration, current market/odds validation, and out-of-sample evaluation. In particular, do not use the displayed percentage as a verified hit rate.
->
-> For live operation, configure a supported live statistics source and an authorised booking-code API. This repository does not contain bookmaker credentials or a booking API endpoint; those must be supplied as deployment secrets and the external service must implement the contract below.
+## Current implementation
 
-## One-command start
+- FastAPI backend with streaming pipeline (POST /api/pipeline) and conversational alias (POST /api/chat).
+- Natural-language parsing with deterministic fallback and optional OpenAI/Anthropic parsing.
+- Existing corner-interval scouting engine and configurable live stats providers.
+- Booking adapters: demo-only mock, legacy generic partner API, and Manage Bet Codes.
+- Manage Bet Codes adapter uses POST /v1/resolve then strict POST /v1/book, rejects odds changes, requires all picks to resolve, and requires verified=true plus a complete returned pick list.
+- Exact market metadata is required by the booking adapter. The current corner-interval scout does not yet populate canonical bookmaker market keys; consequently, first-five/first-fifteen interval selections are deliberately rejected until a real exact interval market is discovered and mapped. This prevents an incorrect full-match substitute.
 
-```bash
-git clone https://github.com/heidif24/tactica24-game.git
-cd tactica24-game
+## Run locally
 
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+    git clone https://github.com/heidif24/tactica24-game.git
+    cd tactica24-game
+    python -m venv .venv
+    # Windows: .venv\Scripts\activate
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    cp .env.example .env
+    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
-cp .env.example .env               # defaults: mock stats + mock builder
+Open http://localhost:8000. Default mock mode is for interface and pipeline testing only.
 
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
+## Configure Manage Bet Codes
 
-Open **http://localhost:8000** — the dashboard is served by FastAPI.
+Create an API key in your Manage Bet Codes account and add it as a server-side secret. Never expose it in frontend JavaScript or commit it to Git.
 
-Click a preset chip → **Run Pipeline**. You should see:
-1. Rule parsed  
-2. Fixtures scanned + ranked by Poisson P(0 corners)  
-3. Demo builder explicitly reports that no bookmaker was contacted  
-4. No booking code is issued in demo mode
+    STATS_PROVIDER=api_football
+    API_FOOTBALL_KEY=your_stats_provider_key
+    SLIP_BUILDER=manage_bet_codes
+    MANAGE_BET_CODES_BASE_URL=https://api.managebetcodes.app/v1
+    MANAGE_BET_CODES_API_KEY=mbc_live_your_key
+    MANAGE_BET_CODES_BOOKMAKER=sportybet
+    MANAGE_BET_CODES_TIMEOUT_SECONDS=35
+    LLM_PROVIDER=openai
+    OPENAI_API_KEY=your_llm_key
 
----
+Supported bookmaker identifiers must be checked against the provider's live bookmaker catalog. Examples in its documentation include sportybet, bet9ja, onexbet, msport, and betking.
 
-## Go live (optional)
+Official provider references:
+- API overview and capabilities: https://managebetcodes.app/docs
+- Event search and available markets: https://managebetcodes.app/docs/search
+- Resolve selections: https://managebetcodes.app/docs/resolve
+- Book and verify: https://managebetcodes.app/docs/book
+- Quickstart and API keys: https://managebetcodes.app/docs/quickstart
 
-### Stats
+The provider's resolve plan expires after 10 minutes. Booking costs API credits per created code. Check your account's current plan, quota and credit balance before live use.
 
-```env
-STATS_PROVIDER=api_football
-API_FOOTBALL_KEY=your_key_here
-# If using RapidAPI instead of api-sports.io direct:
-# API_FOOTBALL_BASE=https://api-football-v1.p.rapidapi.com/v3
-# API_FOOTBALL_HOST=api-football-v1.p.rapidapi.com
-```
+## Live data and model limitations
 
-Or FootyStats (corner-rate fields are validated before a fixture is used):
+The current live statistics integrations provide fixture and aggregate corner information, but do not yet provide reliable interval-by-interval historical samples for every fixture. A fixed first-15-minute share is an assumption, not observed event-level evidence. Tactica24 must label this limitation and must not present uncalibrated estimates as validated probabilities.
 
-```env
-STATS_PROVIDER=footystats
-FOOTYSTATS_KEY=your_key_here
-```
+Before describing any selection as high-confidence, add:
+1. Timestamped historical event and market data, including the requested exact interval.
+2. Walk-forward/out-of-sample backtesting with leakage controls.
+3. Calibration (reliability curves, Brier score and log loss) by market and competition.
+4. Market-price comparison and odds movement checks.
+5. Minimum sample thresholds and a no-pick outcome when evidence is insufficient.
 
-### Slip builder
+## API
 
-For a real booking code, set `SLIP_BUILDER=api` and configure an authorised partner endpoint. A code is displayed only when the partner confirms every requested leg. The `mock` builder is a simulation and the `playwright` builder is intentionally disabled until exact market matching can be guaranteed.
+| Endpoint | Purpose |
+|---|---|
+| GET /api/health | Runtime/provider configuration |
+| POST /api/parse-rule | Parse a natural-language rule |
+| POST /api/scout-matches | Run the current statistical scout |
+| POST /api/generate-code | Build a code from explicit selections |
+| POST /api/chat | Conversational pipeline (SSE) |
+| POST /api/pipeline | Pipeline (SSE) |
 
-```env
-SLIP_BUILDER=playwright
-ONEXBET_BASE_URL=https://1xbet.ng
-HEADLESS=false          # watch the browser while tuning selectors
-playwright install chromium
-```
+## Safety and transparency
 
-All DOM selectors live in `backend/builders/playwright_builder.py` → `SELECTORS` dict. Update them when 1xBet changes their markup; core flow stays untouched.
-
-Or plug a third-party booking API:
-
-```env
-SLIP_BUILDER=api
-BOOKING_API_URL=https://your-partner.example
-BOOKING_API_KEY=...
-```
-
-### LLM parser (optional)
-
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-```
-
-Without an LLM key the deterministic parser covers common corner-interval prompts.
-
----
-
-## Architecture
-
-| Stage | Endpoint | Module |
-|-------|----------|--------|
-| 1 Parse rule | `POST /api/parse-rule` | `backend/parser.py` |
-| 2 Scout | `POST /api/scout-matches` | `backend/stats_engine.py` |
-| 3 Build slip | `POST /api/generate-code` | `backend/builders/*` |
-| Full SSE | `POST /api/pipeline` | `backend/main.py` |
-| UI | `GET /` | `frontend/index.html` |
-
-### Poisson model
-
-```
-λ = (0.55·c90_for + 0.45·opp_c90_against) × first15_share × (window_min / 15)
-P(X=0) = e^(-λ)
-fair_odds = 1 / P
-```
-
-Selections below `min_probability` are dropped; top `max_legs` by probability are returned.
-
-Missing / suspended 1xBet micro-markets are skipped; remaining legs still save.
-
----
-
-## Project tree
-
-```
-backend/
-  main.py
-  models.py
-  parser.py
-  stats_engine.py
-  builders/
-    __init__.py
-    mock_builder.py
-    playwright_builder.py
-    api_builder.py
-frontend/
-  index.html
-.env.example
-requirements.txt
-README.md
-```
-
----
-
-## License
-
-MIT — no warranty. Not financial advice. Use at your own risk.
+Tactica24 does not guarantee outcomes, place stakes, or encourage chasing losses. The user makes the final decision and submits any wager manually. Do not deploy with mock providers and mistake the demo output for live data.

@@ -1,7 +1,7 @@
 """Out-of-sample probability calibration using a user-supplied historical CSV.
 
 Required columns:
-market_category,sub_market,time_window,predicted_probability,outcome,predicted_at,settled_at
+market_category,sub_market,time_window,model_version,predicted_probability,outcome,predicted_at,kickoff_at,settled_at
 
 Each row must be a genuinely out-of-sample forecast recorded before the event
 settled. The module refuses small samples and returns no calibrated estimate.
@@ -36,15 +36,16 @@ def _load_rows(path: str, mtime: float) -> tuple[dict, ...]:
     rows = []
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
-        required = {"market_category", "sub_market", "time_window", "predicted_probability", "outcome", "predicted_at", "settled_at"}
+        required = {"market_category", "sub_market", "time_window", "model_version", "predicted_probability", "outcome", "predicted_at", "kickoff_at", "settled_at"}
         if not required.issubset(set(reader.fieldnames or [])):
             raise ValueError(f"Calibration CSV must contain columns: {', '.join(sorted(required))}")
         for row in reader:
             predicted_at = _parse_time(row.get("predicted_at", ""))
+            kickoff_at = _parse_time(row.get("kickoff_at", ""))
             settled = _parse_time(row.get("settled_at", ""))
             if (
-                predicted_at is None or settled is None
-                or predicted_at >= settled
+                predicted_at is None or kickoff_at is None or settled is None
+                or predicted_at >= kickoff_at or kickoff_at >= settled
                 or settled > datetime.now(timezone.utc)
             ):
                 continue
@@ -59,6 +60,7 @@ def _load_rows(path: str, mtime: float) -> tuple[dict, ...]:
                 "market_category": row["market_category"].strip().lower(),
                 "sub_market": row["sub_market"].strip().lower(),
                 "time_window": row["time_window"].strip(),
+                "model_version": row["model_version"].strip(),
                 "p": p,
                 "y": y,
             })
@@ -80,6 +82,7 @@ def calibrate_probability(
     sub_market: str,
     time_window: str,
     predicted_probability: float,
+    model_version: str = "tactica24-poisson-v2",
 ) -> tuple[float | None, int]:
     path = os.getenv("T24_CALIBRATION_FILE", "data/historical_outcomes.csv")
     file_path = Path(path)
@@ -91,6 +94,7 @@ def calibrate_probability(
         if row["market_category"] == market_category.lower()
         and row["sub_market"] == sub_market.lower()
         and row["time_window"] == time_window
+        and row["model_version"] == model_version
     ]
     if len(matched) < MIN_TOTAL_SAMPLES:
         return None, len(matched)
@@ -115,7 +119,7 @@ def calibration_dataset_status() -> dict:
         return {"ready": False, "rows": 0, "profiles": 0}
     groups: dict[tuple[str, str, str], list[dict]] = {}
     for row in rows:
-        key = (row["market_category"], row["sub_market"], row["time_window"])
+        key = (row["market_category"], row["sub_market"], row["time_window"], row["model_version"])
         groups.setdefault(key, []).append(row)
     profiles = 0
     for values in groups.values():

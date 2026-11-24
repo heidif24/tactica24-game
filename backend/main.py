@@ -125,6 +125,7 @@ class PipelineRequest(BaseModel):
     min_probability: Optional[float] = None
     base_url: Optional[str] = None
     bookmaker: Optional[str] = None
+    context: list[str] = []
 
 
 def _sse(event: PipelineProgress) -> str:
@@ -143,8 +144,11 @@ async def api_pipeline(body: PipelineRequest):
                 message="Translating natural-language prompt into filter criteria…",
             ))
             await asyncio.sleep(0.1)
+            parse_prompt = body.prompt
+            if body.context and os.getenv('LLM_PROVIDER', 'none').lower() != 'none':
+                parse_prompt = '\\n'.join(body.context[-8:] + [f'Current request: {body.prompt}'])
             parsed = await parse_rule(ParseRuleRequest(
-                prompt=body.prompt,
+                prompt=parse_prompt,
                 max_legs=body.max_legs,
                 min_probability=body.min_probability,
             ))

@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 class ManageBetCodesBuilder:
-    def __init__(self) -> None:
+    def __init__(self, bookmaker: Optional[str] = None) -> None:
         self.base = os.getenv(
             "MANAGE_BET_CODES_BASE_URL",
             "https://api.managebetcodes.app/v1",
         ).rstrip("/")
         self.key = os.getenv("MANAGE_BET_CODES_API_KEY", "")
-        self.bookmaker = os.getenv("MANAGE_BET_CODES_BOOKMAKER", "sportybet")
+        self.bookmaker = bookmaker or os.getenv("MANAGE_BET_CODES_BOOKMAKER", "sportybet")
         self.timeout = float(os.getenv("MANAGE_BET_CODES_TIMEOUT_SECONDS", "35"))
         if not self.key:
             raise RuntimeError("MANAGE_BET_CODES_API_KEY is required")

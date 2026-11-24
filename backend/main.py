@@ -71,9 +71,14 @@ async def health():
         or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
         or (slip_builder in ("manage_bet_codes", "mbc") and bool(os.getenv("MANAGE_BET_CODES_API_KEY")))
     )
+    # Current scouting emits interval-corner selections without provider-native
+    # market keys. Keep MBC mode degraded until exact market discovery is wired.
+    market_mapping_ready = slip_builder not in ("manage_bet_codes", "mbc")
+    operational = not demo_mode and stats_configured and builder_configured and market_mapping_ready
     return {
-        "status": "degraded" if demo_mode or not stats_configured or not builder_configured else "ok",
-        "operational": not demo_mode and stats_configured and builder_configured,
+        "status": "ok" if operational else "degraded",
+        "operational": operational,
+        "market_mapping_ready": market_mapping_ready,
         "demo_mode": demo_mode,
         "stats_configured": stats_configured,
         "builder_configured": builder_configured,

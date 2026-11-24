@@ -1,86 +1,89 @@
 # Tactica24
 
-**Conversational football analysis → fixture and market validation → verified bookmaker booking code.**
+Conversational football analysis, exact bookmaker-market discovery, historical probability calibration, and verified booking-code creation.
 
-Tactica24 is designed to interpret a natural-language request, analyse eligible fixtures, rank candidate selections, validate the exact market at a chosen bookmaker, and return a code only after the booking provider confirms it. It does not place stakes.
+## Deployment
 
-## Important operating rules
+This repository is a Python FastAPI application. Vercel's FastAPI runtime entrypoint is declared in the root `pyproject.toml`:
 
-- Demo mode never creates a real booking code.
-- A model probability is an estimate, not a guaranteed win rate. The existing corner Poisson model is not yet calibrated against a large, timestamped historical dataset.
-- A market must match the requested event, market, outcome, line and time period. The system must not silently replace an unavailable interval market with a full-match market.
-- Booking is strict: every requested pick must resolve and the resulting code must pass provider load-back verification. Partial or unverified codes are not displayed as successful.
-- Manage Bet Codes is a third-party booking-code service, not a bookmaker. It charges API credits for booking and its available markets depend on the target bookmaker.
+    [tool.vercel]
+    entrypoint = "backend.main:app"
 
-## Current implementation
+The FastAPI application serves the dashboard at `/` and API endpoints under `/api`. Vercel uses the root `requirements.txt` to install Python dependencies.
 
-- FastAPI backend with streaming pipeline (POST /api/pipeline) and conversational alias (POST /api/chat).
-- Natural-language parsing with deterministic fallback and optional OpenAI/Anthropic parsing.
-- Existing corner-interval scouting engine and configurable live stats providers.
-- Booking adapters: demo-only mock, legacy generic partner API, and Manage Bet Codes.
-- Manage Bet Codes adapter uses POST /v1/resolve then strict POST /v1/book, rejects odds changes, requires all picks to resolve, and requires verified=true plus a complete returned pick list.
-- Exact market metadata is required by the booking adapter. The current corner-interval scout does not yet populate canonical bookmaker market keys; consequently, first-five/first-fifteen interval selections are deliberately rejected until a real exact interval market is discovered and mapped. This prevents an incorrect full-match substitute.
+## What is implemented
 
-## Run locally
+- Conversational request parsing with OpenAI/Anthropic support and deterministic fallback.
+- Supported statistical families: corners (full-match and requested intervals), full-match goals, BTTS, 1X2 and double chance.
+- Minute-level goal, BTTS, result and card markets are not inferred from full-match aggregate rates.
+- API-Football and FootyStats fixture/statistics adapters; missing statistics are not replaced with fabricated team averages.
+- Manage Bet Codes market discovery using bookmaker capability catalogues, event search, event-specific markets or canonical market catalogue fallback.
+- Strict selection resolution, strict booking, odds-change rejection, and provider load-back verification.
+- A code is returned only if every requested selection is resolved, booked and provider-verified.
+- Conversational SSE endpoint at `POST /api/chat`, with recent prompt context.
+- GitHub Actions checks Python compilation and automated tests.
 
-    git clone https://github.com/heidif24/tactica24-game.git
-    cd tactica24-game
-    python -m venv .venv
-    # Windows: .venv\Scripts\activate
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    cp .env.example .env
-    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+## Probability calibration is required for live booking
 
-Open http://localhost:8000. Default mock mode is for interface and pipeline testing only.
+Raw Poisson outputs are model estimates, not proven hit rates. Live code creation is blocked by default unless the requested market/period has enough timestamped out-of-sample calibration evidence.
 
-## Configure Manage Bet Codes
+Set `T24_CALIBRATION_FILE=data/historical_outcomes.csv` and provide a CSV with these columns:
 
-Create an API key in your Manage Bet Codes account and add it as a server-side secret. Never expose it in frontend JavaScript or commit it to Git.
+    market_category,sub_market,time_window,predicted_probability,outcome,predicted_at,settled_at
 
-    STATS_PROVIDER=api_football
-    API_FOOTBALL_KEY=your_stats_provider_key
+Each row must be a forecast recorded before the match settled. Outcomes are 1 for the selected event occurring and 0 otherwise. The default minimum is 200 observations for the exact market/sub-market/period and 30 observations in the probability bin. Tactica24 uses a conservative 95% Wilson lower confidence bound rather than treating the raw hit rate as certainty.
+
+A blank schema template is included at `data/historical_outcomes.template.csv`. It is not historical data and does not make the app live-ready. Do not fill it with invented or retrospectively fitted predictions.
+
+## Manage Bet Codes configuration
+
+Create an API key at https://managebetcodes.app/dashboard/api. The key must be stored only as a server-side Vercel environment variable.
+
     SLIP_BUILDER=manage_bet_codes
     MANAGE_BET_CODES_BASE_URL=https://api.managebetcodes.app/v1
     MANAGE_BET_CODES_API_KEY=mbc_live_your_key
     MANAGE_BET_CODES_BOOKMAKER=sportybet
     MANAGE_BET_CODES_TIMEOUT_SECONDS=35
+    T24_REQUIRE_CALIBRATED=true
+    T24_CALIBRATION_FILE=data/historical_outcomes.csv
+
+For live fixtures and team statistics:
+
+    STATS_PROVIDER=api_football
+    API_FOOTBALL_KEY=your_api_football_key
+    API_FOOTBALL_BASE=https://v3.football.api-sports.io
+
+For conversational AI:
+
     LLM_PROVIDER=openai
-    OPENAI_API_KEY=your_llm_key
+    OPENAI_API_KEY=your_openai_api_key
 
-Supported bookmaker identifiers must be checked against the provider's live bookmaker catalog. Examples in its documentation include sportybet, bet9ja, onexbet, msport, and betking.
+Supported bookmaker codes and market availability are read from Manage Bet Codes' live catalogue. Do not assume every bookmaker exposes event-market details or every market. A missing/ambiguous market is rejected.
 
-Official provider references:
-- API overview and capabilities: https://managebetcodes.app/docs
-- Event search and available markets: https://managebetcodes.app/docs/search
-- Resolve selections: https://managebetcodes.app/docs/resolve
-- Book and verify: https://managebetcodes.app/docs/book
-- Quickstart and API keys: https://managebetcodes.app/docs/quickstart
-
-The provider's resolve plan expires after 10 minutes. Booking costs API credits per created code. Check your account's current plan, quota and credit balance before live use.
-
-## Live data and model limitations
-
-The current live statistics integrations provide fixture and aggregate corner information, but do not yet provide reliable interval-by-interval historical samples for every fixture. A fixed first-15-minute share is an assumption, not observed event-level evidence. Tactica24 must label this limitation and must not present uncalibrated estimates as validated probabilities.
-
-Before describing any selection as high-confidence, add:
-1. Timestamped historical event and market data, including the requested exact interval.
-2. Walk-forward/out-of-sample backtesting with leakage controls.
-3. Calibration (reliability curves, Brier score and log loss) by market and competition.
-4. Market-price comparison and odds movement checks.
-5. Minimum sample thresholds and a no-pick outcome when evidence is insufficient.
-
-## API
+## API endpoints
 
 | Endpoint | Purpose |
 |---|---|
-| GET /api/health | Runtime/provider configuration |
-| POST /api/parse-rule | Parse a natural-language rule |
-| POST /api/scout-matches | Run the current statistical scout |
-| POST /api/generate-code | Build a code from explicit selections |
-| POST /api/chat | Conversational pipeline (SSE) |
-| POST /api/pipeline | Pipeline (SSE) |
+| `GET /api/health` | Provider, AI and calibration readiness |
+| `POST /api/parse-rule` | Parse a natural-language request |
+| `POST /api/scout-matches` | Statistical analysis and ranking |
+| `POST /api/generate-code` | Build a code from explicit selections |
+| `POST /api/chat` | Conversational streaming pipeline |
+| `POST /api/pipeline` | Pipeline alias |
 
-## Safety and transparency
+## Run locally
 
-Tactica24 does not guarantee outcomes, place stakes, or encourage chasing losses. The user makes the final decision and submits any wager manually. Do not deploy with mock providers and mistake the demo output for live data.
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+
+The default provider settings are mock/demo. Mock mode never produces a bookmaker code.
+
+## Important boundaries
+
+- Manage Bet Codes creates shareable booking codes; it does not place a stake or access bookmaker wallets.
+- No market is silently substituted.
+- No incomplete or unverified code is presented as successful.
+- Historical calibration is market- and period-specific. A calibrated full-match goals profile does not validate first-five-minute corners.
+- Betting outcomes are uncertain; no probability or selection guarantees a win.

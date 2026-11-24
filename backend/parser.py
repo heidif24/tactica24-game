@@ -19,22 +19,28 @@ from backend.models import (
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a strict sports-betting rule parser.
-Convert the user prompt into a single JSON object matching this schema exactly:
+SYSTEM_PROMPT = """You are Tactica24's football market request parser.
+Convert the user's natural-language request into one JSON object matching this schema:
 {
   "sport": "football",
   "market_category": "corners",
   "sub_market": "team_interval_corners",
   "outcome": null,
-  "time_window": "00:00-04:59",
+  "time_window": "full_match",
   "selection_target": "lowest_probability_team",
   "line": 0.5,
   "direction": "under",
   "min_probability": 0.75,
-  "max_legs": 3,
+  "max_legs": 1,
   "match_status": "upcoming"
 }
-Only output valid JSON. No markdown, no commentary."""
+Allowed market_category values: corners, goals, btts, result, double_chance, cards.
+Allowed selection_target values: lowest_probability_team, home, away, both, draw, total.
+Use an exact MM:SS-MM:SS interval only when the user requests one; otherwise use full_match.
+For BTTS, set outcome to Yes or No. For 1X2, set outcome to Home, Draw, or Away. For double chance, set outcome to 1X, X2, or 12.
+Never invent fixtures, bookmaker markets, odds, or statistics. Do not convert a requested interval into a full-match market.
+If the requested market/period cannot be supported by the data engine, preserve the request exactly; the application will return no pick.
+Only output valid JSON, without markdown or commentary."""
 
 
 def _parse_window_minutes(window: str) -> float:

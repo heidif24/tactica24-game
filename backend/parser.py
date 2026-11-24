@@ -91,7 +91,10 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     if "both teams to score" in text or "btts" in text:
         category = "btts"
         outcome = "No" if re.search(r"\bno\b|not score", text) else "Yes"
-    elif "1x2" in text or "match result" in text or "to win" in text or "winner" in text:
+    elif "double chance" in text:
+        category = "double_chance"
+        outcome = "1X" if "1x" in text else "X2" if "x2" in text else "12"
+    elif "1x2" in text or "match result" in text or "to win" in text or "winner" in text or "home win" in text or "away win" in text or "draw" in text:
         category = "result"
     elif "card" in text:
         category = "cards"
@@ -110,6 +113,8 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
             target, outcome = SelectionTarget.HOME, "Home"
     elif category == "btts":
         target = SelectionTarget.BOTH
+    elif category == "double_chance":
+        target = SelectionTarget.BOTH
     elif "total" in text or category == "goals":
         target = SelectionTarget.TOTAL
     elif "home" in text and "away" not in text:
@@ -123,6 +128,8 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         sub_market = "interval_goals" if explicit_period else "total_goals"
     elif category == "btts":
         sub_market = "interval_btts" if explicit_period else "btts"
+    elif category == "double_chance":
+        sub_market = "interval_double_chance" if explicit_period else "double_chance"
     elif category == "result":
         sub_market = "interval_result" if explicit_period else "match_result"
     else:

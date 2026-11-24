@@ -124,6 +124,7 @@ class PipelineRequest(BaseModel):
     max_legs: Optional[int] = None
     min_probability: Optional[float] = None
     base_url: Optional[str] = None
+    bookmaker: Optional[str] = None
 
 
 def _sse(event: PipelineProgress) -> str:
@@ -185,7 +186,7 @@ async def api_pipeline(body: PipelineRequest):
                 message=f"Checking exact markets at {os.getenv('MANAGE_BET_CODES_BOOKMAKER', 'configured bookmaker')} and preparing a strict booking…",
             ))
             await asyncio.sleep(0.05)
-            builder = get_builder()
+            builder = get_builder(bookmaker=body.bookmaker)
             result = await builder.build(scout.selections, base_url=body.base_url)
             yield _sse(PipelineProgress(
                 stage=3, stage_name="Resolving Bookmaker Markets",

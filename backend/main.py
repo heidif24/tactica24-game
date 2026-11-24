@@ -72,8 +72,9 @@ async def health():
         or (slip_builder in ("manage_bet_codes", "mbc") and bool(os.getenv("MANAGE_BET_CODES_API_KEY")))
     )
     market_mapping_ready = slip_builder not in ("manage_bet_codes", "mbc") or bool(os.getenv("MANAGE_BET_CODES_API_KEY"))
-    calibration_path = Path(os.getenv("T24_CALIBRATION_FILE", "data/historical_outcomes.csv"))
-    calibration_data_ready = calibration_path.exists()
+    from backend.calibration import calibration_dataset_status
+    calibration_status = calibration_dataset_status()
+    calibration_data_ready = calibration_status["ready"]
     llm_provider = os.getenv("LLM_PROVIDER", "none").lower()
     llm_configured = (
         (llm_provider == "openai" and bool(os.getenv("OPENAI_API_KEY")))
@@ -89,6 +90,8 @@ async def health():
         "operational": operational,
         "market_mapping_ready": market_mapping_ready,
         "calibration_data_ready": calibration_data_ready,
+        "calibration_rows": calibration_status["rows"],
+        "calibration_profiles": calibration_status["profiles"],
         "llm_configured": llm_configured,
         "demo_mode": demo_mode,
         "stats_configured": stats_configured,

@@ -1,7 +1,7 @@
 """Out-of-sample probability calibration using a user-supplied historical CSV.
 
 Required columns:
-market_category,sub_market,time_window,predicted_probability,outcome,settled_at
+market_category,sub_market,time_window,predicted_probability,outcome,predicted_at,settled_at
 
 Each row must be a genuinely out-of-sample forecast recorded before the event
 settled. The module refuses small samples and returns no calibrated estimate.
@@ -36,12 +36,17 @@ def _load_rows(path: str, mtime: float) -> tuple[dict, ...]:
     rows = []
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
-        required = {"market_category", "sub_market", "time_window", "predicted_probability", "outcome", "settled_at"}
+        required = {"market_category", "sub_market", "time_window", "predicted_probability", "outcome", "predicted_at", "settled_at"}
         if not required.issubset(set(reader.fieldnames or [])):
             raise ValueError(f"Calibration CSV must contain columns: {', '.join(sorted(required))}")
         for row in reader:
+            predicted_at = _parse_time(row.get("predicted_at", ""))
             settled = _parse_time(row.get("settled_at", ""))
-            if settled is None or settled > datetime.now(timezone.utc):
+            if (
+                predicted_at is None or settled is None
+                or predicted_at >= settled
+                or settled > datetime.now(timezone.utc)
+            ):
                 continue
             try:
                 p = float(row["predicted_probability"])

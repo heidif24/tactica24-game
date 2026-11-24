@@ -57,7 +57,8 @@
     </header>
 
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
-      <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>\n      <p class="text-xs text-terminal-warn">Current analysis model: football corner intervals. Other markets and exact interval booking are not enabled until their data and bookmaker mappings are verified.</p>
+      <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>
+      <p class="text-xs text-terminal-warn">Current analysis model: football corner intervals. Other markets and exact interval booking are not enabled until their data and bookmaker mappings are verified.</p>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
         placeholder="Example: Find upcoming matches where the away team is least likely to get a corner in the first 5 minutes. Use at most 2 selections and return a code only if the exact market is available."></textarea>
@@ -138,7 +139,8 @@
 
   <script>
     // Same-origin when served by FastAPI; override via localStorage if needed
-    const API = localStorage.getItem('tactica24_api') || window.location.origin;\n    const conversationHistory = [];
+    const API = localStorage.getItem('tactica24_api') || window.location.origin;
+    const conversationHistory = [];
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
@@ -225,7 +227,9 @@
 
       const maxLegs = +document.getElementById('maxLegs').value || 3;
       const minProb = (+document.getElementById('minProb').value || 75) / 100;
-      const bookmaker = document.getElementById('bookmaker').value;\n      const context = [...conversationHistory];\n      document.getElementById('progressSection').classList.remove('hidden');
+      const bookmaker = document.getElementById('bookmaker').value;
+      const context = [...conversationHistory];
+      document.getElementById('progressSection').classList.remove('hidden');
 
       document.getElementById('runBtn').disabled = true;
       document.getElementById('runBtn').textContent = 'Analysing…';

@@ -29,9 +29,9 @@ Raw Poisson outputs are model estimates, not proven hit rates. Live code creatio
 
 Set `T24_CALIBRATION_FILE=data/historical_outcomes.csv` and provide a CSV with these columns:
 
-    market_category,sub_market,time_window,predicted_probability,outcome,predicted_at,settled_at
+    market_category,sub_market,time_window,model_version,predicted_probability,outcome,predicted_at,kickoff_at,settled_at
 
-Each row must be a forecast recorded before the match settled. Outcomes are 1 for the selected event occurring and 0 otherwise. The default minimum is 200 observations for the exact market/sub-market/period and 30 observations in the probability bin. Tactica24 uses a conservative 95% Wilson lower confidence bound rather than treating the raw hit rate as certainty.
+Each row must be a genuine out-of-sample forecast recorded before kick-off, with the same model_version as the running model (currently tactica24-poisson-v2). Outcomes are 1 for the selected event occurring and 0 otherwise. kickoff_at must fall after predicted_at and before settled_at. The default minimum is 200 observations for the exact market/sub-market/period and 30 observations in the probability bin. Tactica24 uses a conservative 95% Wilson lower confidence bound rather than treating the raw hit rate as certainty.
 
 A blank schema template is included at `data/historical_outcomes.template.csv`. It is not historical data and does not make the app live-ready. Do not fill it with invented or retrospectively fitted predictions.
 

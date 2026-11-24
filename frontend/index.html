@@ -144,9 +144,10 @@
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
+      const requirements = (d.setup_requirements || []).join(' · ');
       el.textContent = d.operational
-        ? 'live · stats=' + d.stats_provider + ' · builder=' + d.slip_builder
-        : 'demo / setup needed · stats=' + d.stats_provider + ' · builder=' + d.slip_builder;
+        ? 'LIVE READY · ' + d.stats_provider + ' · ' + d.slip_builder
+        : 'SETUP REQUIRED · ' + requirements;
       el.classList.add(d.operational ? 'text-terminal-accent' : 'text-terminal-warn');
       if (!d.operational) el.classList.add('border-terminal-warn/40');
     }).catch(() => {

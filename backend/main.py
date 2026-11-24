@@ -69,6 +69,7 @@ async def health():
     builder_configured = (
         slip_builder == "mock"
         or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
+        or (slip_builder in ("manage_bet_codes", "mbc") and bool(os.getenv("MANAGE_BET_CODES_API_KEY")))
     )
     return {
         "status": "degraded" if demo_mode or not stats_configured or not builder_configured else "ok",
@@ -130,6 +131,7 @@ def _sse(event: PipelineProgress) -> str:
 
 
 @app.post("/api/pipeline")
+@app.post("/api/chat")
 async def api_pipeline(body: PipelineRequest):
     """Run all 4 stages and stream progress via Server-Sent Events."""
 
@@ -179,15 +181,15 @@ async def api_pipeline(body: PipelineRequest):
                 return
 
             yield _sse(PipelineProgress(
-                stage=3, stage_name="Matching 1xBet Markets",
-                message="Resolving markets and building betslip…",
+                stage=3, stage_name="Resolving Bookmaker Markets",
+                message=f"Checking exact markets at {os.getenv('MANAGE_BET_CODES_BOOKMAKER', 'configured bookmaker')} and preparing a strict booking…",
             ))
             await asyncio.sleep(0.05)
             builder = get_builder()
             result = await builder.build(scout.selections, base_url=body.base_url)
             yield _sse(PipelineProgress(
-                stage=3, stage_name="Matching 1xBet Markets",
-                message=f"Builder={result.builder_used}. " + " | ".join(result.logs[-5:]),
+                stage=3, stage_name="Resolving Bookmaker Markets",
+                message=f"Provider={result.builder_used}. " + " | ".join(result.logs[-5:]),
                 detail={
                     "legs": [l.model_dump(by_alias=True) for l in result.legs],
                     "logs": result.logs,
@@ -197,10 +199,10 @@ async def api_pipeline(body: PipelineRequest):
             code_msg = (
                 f"Booking code: {result.booking_code}"
                 if result.booking_code
-                else "No booking code (no matched legs or builder skipped save)"
+                else "No verified booking code (markets unavailable, incomplete, or provider not configured)"
             )
             yield _sse(PipelineProgress(
-                stage=4, stage_name="Saving Betslip & Extracting Code",
+                stage=4, stage_name="Verifying Booking Code",
                 message=code_msg,
                 detail={
                     "booking_code": result.booking_code,

@@ -11,14 +11,9 @@
         extend: {
           colors: {
             terminal: {
-              bg: '#0b0f14',
-              panel: '#111820',
-              border: '#1e2a36',
-              accent: '#00e5a0',
-              warn: '#f5a623',
-              danger: '#ff4d6a',
-              muted: '#6b7c8f',
-              text: '#e6edf3',
+              bg: '#0b0f14', panel: '#111820', border: '#1e2a36',
+              accent: '#00e5a0', warn: '#f5a623', danger: '#ff4d6a',
+              muted: '#6b7c8f', text: '#e6edf3',
             }
           },
           fontFamily: {
@@ -48,7 +43,6 @@
 <body class="min-h-screen">
   <div class="max-w-6xl mx-auto px-4 py-6 space-y-6">
 
-    <!-- Header -->
     <header class="flex items-center justify-between border-b border-terminal-border pb-4">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-terminal-accent/20 flex items-center justify-center glow">
@@ -59,31 +53,22 @@
           <p class="text-xs text-terminal-muted mono">NL rule → Poisson scout → 1xBet code</p>
         </div>
       </div>
-      <div id="healthBadge" class="text-xs mono px-2 py-1 rounded border border-terminal-border text-terminal-muted">
-        connecting…
-      </div>
+      <div id="healthBadge" class="text-xs mono px-2 py-1 rounded border border-terminal-border text-terminal-muted">connecting…</div>
     </header>
 
-    <!-- Prompt panel -->
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
       <label class="block text-sm font-medium text-terminal-muted">Betting rule (plain English)</label>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
         placeholder="Find upcoming or live football matches where Team 1 or Team 2 is statistically unlikely to get a corner in the first 5 minutes, minimum 75% probability, max 3 legs"></textarea>
 
-      <div class="flex flex-wrap gap-2" id="presets">
+      <div class="flex flex-wrap gap-2">
         <button data-preset="No corner in first 5 mins (safest team), min 75%, max 3 legs"
-          class="preset-chip text-xs px-3 py-1.5 rounded-full border border-terminal-border hover:border-terminal-accent hover:text-terminal-accent transition">
-          No corner first 5' (safest)
-        </button>
+          class="preset-chip text-xs px-3 py-1.5 rounded-full border border-terminal-border hover:border-terminal-accent hover:text-terminal-accent transition">No corner first 5' (safest)</button>
         <button data-preset="Under 1.5 total corners in first 15 minutes, min 70%, max 4 legs"
-          class="preset-chip text-xs px-3 py-1.5 rounded-full border border-terminal-border hover:border-terminal-accent hover:text-terminal-accent transition">
-          Under 1.5 total first 15'
-        </button>
+          class="preset-chip text-xs px-3 py-1.5 rounded-full border border-terminal-border hover:border-terminal-accent hover:text-terminal-accent transition">Under 1.5 total first 15'</button>
         <button data-preset="Team under 0.5 corners 00:00-04:59, minimum 80% implied probability, max 2 legs, upcoming only"
-          class="preset-chip text-xs px-3 py-1.5 rounded-full border border-terminal-border hover:border-terminal-accent hover:text-terminal-accent transition">
-          Ultra-safe under 0.5 (80%)
-        </button>
+          class="preset-chip text-xs px-3 py-1.5 rounded-full border border-terminal-border hover:border-terminal-accent hover:text-terminal-accent transition">Ultra-safe under 0.5 (80%)</button>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
@@ -115,7 +100,6 @@
       </button>
     </section>
 
-    <!-- Progress tracker -->
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5">
       <div class="flex flex-wrap gap-3 mb-4" id="steps">
         <div data-step="1" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">1 · Parse</div>
@@ -128,13 +112,11 @@
       </div>
     </section>
 
-    <!-- Results -->
     <section id="results" class="hidden space-y-4">
       <div class="bg-terminal-panel border border-terminal-border rounded-xl p-5">
         <h2 class="text-sm font-semibold mb-3 text-terminal-muted uppercase tracking-wider">Selections</h2>
         <div id="legsTable" class="space-y-3"></div>
       </div>
-
       <div id="codeCard" class="hidden bg-terminal-panel border border-terminal-accent/40 rounded-xl p-5 glow">
         <h2 class="text-sm font-semibold mb-2 text-terminal-accent uppercase tracking-wider">1xBet Booking Code</h2>
         <div class="flex items-center gap-3">
@@ -154,9 +136,9 @@
   </div>
 
   <script>
-    const API = localStorage.getItem('slipforge_api') || 'http://localhost:8000';
+    // Same-origin when served by FastAPI; override via localStorage if needed
+    const API = localStorage.getItem('slipforge_api') || window.location.origin;
 
-    // health check
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
       el.textContent = `ok · stats=${d.stats_provider} · builder=${d.slip_builder}`;
@@ -166,11 +148,8 @@
       document.getElementById('healthBadge').classList.add('text-terminal-danger');
     });
 
-    // presets
     document.querySelectorAll('.preset-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.getElementById('prompt').value = btn.dataset.preset;
-      });
+      btn.addEventListener('click', () => { document.getElementById('prompt').value = btn.dataset.preset; });
     });
 
     function setStep(n, state) {
@@ -188,8 +167,7 @@
       if (feed.firstChild?.textContent === 'Awaiting prompt…') feed.innerHTML = '';
       const line = document.createElement('div');
       line.className = 'log-line' + (isError ? ' text-terminal-danger' : '');
-      const ts = new Date().toLocaleTimeString();
-      line.textContent = `[${ts}] ${msg}`;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
       feed.appendChild(line);
       feed.scrollTop = feed.scrollHeight;
     }
@@ -205,8 +183,7 @@
     }
 
     function renderLegs(legs) {
-      const wrap = document.getElementById('legsTable');
-      wrap.innerHTML = legs.map(l => `
+      document.getElementById('legsTable').innerHTML = legs.map(l => `
         <div class="border border-terminal-border rounded-lg p-4 bg-terminal-bg">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div class="font-medium text-sm">${l.home_team} vs ${l.away_team}</div>
@@ -219,8 +196,7 @@
             <div class="col-span-2 sm:col-span-1">${l.league}<br/><span class="text-[10px]">${l.market_note || ''}</span></div>
           </div>
           <p class="mt-2 text-[11px] text-terminal-muted">${l.reasoning || ''}</p>
-        </div>
-      `).join('');
+        </div>`).join('');
       document.getElementById('results').classList.remove('hidden');
     }
 
@@ -235,9 +211,8 @@
     }
 
     document.getElementById('copyBtn')?.addEventListener('click', () => {
-      const code = document.getElementById('bookingCode').textContent;
-      navigator.clipboard.writeText(code);
-      log(`Copied ${code}`);
+      navigator.clipboard.writeText(document.getElementById('bookingCode').textContent);
+      log('Code copied');
     });
 
     document.getElementById('runBtn').addEventListener('click', async () => {
@@ -261,7 +236,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, base_url: baseUrl }),
         });
-
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
         const reader = resp.body.getReader();
@@ -281,15 +255,9 @@
             let event;
             try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
-            if (event.error) {
-              log(event.error, true);
-              setStep(0, 'idle');
-              break;
-            }
-
+            if (event.error) { log(event.error, true); setStep(0, 'idle'); break; }
             setStep(event.stage, event.done ? 'done' : 'active');
             log(`[${event.stage_name}] ${event.message}`);
-
             if (event.detail?.selections) renderLegs(event.detail.selections);
             if (event.detail?.legs) renderLegs(event.detail.legs);
             if (event.done && event.detail?.booking_code) {

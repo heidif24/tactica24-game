@@ -1,17 +1,18 @@
-"""SlipForge FastAPI application with SSE progress streaming."""
+"""SlipForge FastAPI application — complete E2E with SSE + static UI."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
+from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.builders import get_builder
@@ -20,18 +21,19 @@ from backend.models import (
     GenerateCodeResponse,
     ParseRuleRequest,
     ParseRuleResponse,
-    ParsedRule,
     PipelineProgress,
     ScoutRequest,
     ScoutResponse,
-    Selection,
 )
 from backend.parser import parse_rule
 from backend.stats_engine import scout_matches
 
 load_dotenv()
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger("slipforge")
 
 app = FastAPI(
@@ -48,6 +50,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
 # ── Health ──────────────────────────────────────────────────────────────────
@@ -70,7 +74,7 @@ async def api_parse_rule(body: ParseRuleRequest):
         return await parse_rule(body)
     except Exception as exc:
         logger.exception("parse-rule failed")
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ── Stage 2: Scout ──────────────────────────────────────────────────────────
@@ -81,7 +85,7 @@ async def api_scout_matches(body: ScoutRequest):
         return await scout_matches(body.rule)
     except Exception as exc:
         logger.exception("scout-matches failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ── Stage 3: Generate code ──────────────────────────────────────────────────
@@ -93,7 +97,7 @@ async def api_generate_code(body: GenerateCodeRequest):
         return await builder.build(body.selections, base_url=body.base_url)
     except Exception as exc:
         logger.exception("generate-code failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # ── Full pipeline with SSE ──────────────────────────────────────────────────
@@ -115,12 +119,11 @@ async def api_pipeline(body: PipelineRequest):
 
     async def generator() -> AsyncGenerator[str, None]:
         try:
-            # Stage 1
             yield _sse(PipelineProgress(
                 stage=1, stage_name="Parsing Rule",
                 message="Translating natural-language prompt into filter criteria…",
             ))
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.1)
             parsed = await parse_rule(ParseRuleRequest(
                 prompt=body.prompt,
                 max_legs=body.max_legs,
@@ -128,23 +131,26 @@ async def api_pipeline(body: PipelineRequest):
             ))
             yield _sse(PipelineProgress(
                 stage=1, stage_name="Parsing Rule",
-                message=f"Parsed via {parsed.parser_used}: {parsed.rule.time_window} "
-                        f"{parsed.rule.direction.value} {parsed.rule.line} @ ≥{parsed.rule.min_probability:.0%}, "
-                        f"max {parsed.rule.max_legs} legs",
+                message=(
+                    f"Parsed via {parsed.parser_used}: {parsed.rule.time_window} "
+                    f"{parsed.rule.direction.value} {parsed.rule.line} "
+                    f"@ ≥{parsed.rule.min_probability:.0%}, max {parsed.rule.max_legs} legs"
+                ),
                 detail=parsed.rule.model_dump(),
             ))
 
-            # Stage 2
             yield _sse(PipelineProgress(
                 stage=2, stage_name="Scanning Fixture Stats",
                 message="Fetching fixtures and computing Poisson early-interval probabilities…",
             ))
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.1)
             scout = await scout_matches(parsed.rule)
             yield _sse(PipelineProgress(
                 stage=2, stage_name="Scanning Fixture Stats",
-                message=f"Scanned {scout.scanned_fixtures} fixtures via {scout.provider} → "
-                        f"{len(scout.selections)} qualifying selections",
+                message=(
+                    f"Scanned {scout.scanned_fixtures} fixtures via {scout.provider} → "
+                    f"{len(scout.selections)} qualifying selections"
+                ),
                 detail={"selections": [s.model_dump(by_alias=True) for s in scout.selections]},
             ))
 
@@ -156,25 +162,22 @@ async def api_pipeline(body: PipelineRequest):
                 ))
                 return
 
-            # Stage 3
             yield _sse(PipelineProgress(
                 stage=3, stage_name="Matching 1xBet Markets",
                 message="Resolving markets and building betslip…",
             ))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
             builder = get_builder()
             result = await builder.build(scout.selections, base_url=body.base_url)
             yield _sse(PipelineProgress(
                 stage=3, stage_name="Matching 1xBet Markets",
-                message=f"Builder={result.builder_used}. "
-                        + " | ".join(result.logs[-5:]),
+                message=f"Builder={result.builder_used}. " + " | ".join(result.logs[-5:]),
                 detail={
                     "legs": [l.model_dump(by_alias=True) for l in result.legs],
                     "logs": result.logs,
                 },
             ))
 
-            # Stage 4
             code_msg = (
                 f"Booking code: {result.booking_code}"
                 if result.booking_code
@@ -211,6 +214,20 @@ async def api_pipeline(body: PipelineRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── Serve dashboard ─────────────────────────────────────────────────────────
+
+@app.get("/")
+async def serve_ui():
+    index = FRONTEND_DIR / "index.html"
+    if not index.exists():
+        raise HTTPException(404, "frontend/index.html not found")
+    return FileResponse(index)
+
+
+if FRONTEND_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
 if __name__ == "__main__":

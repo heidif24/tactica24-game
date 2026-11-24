@@ -1,86 +1,127 @@
 # SlipForge
 
-**Natural-language betting rule → statistical scouting → 1xBet booking code**
+**Natural-language betting rule → Poisson corner scouting → 1xBet booking code**
 
-SlipForge turns plain-English corner rules into validated selections, ranks them with a Poisson early-interval model, matches them against 1xBet markets, and (optionally) builds a saved betslip to retrieve a booking code.
+Complete, runnable end-to-end app. Default mode (`mock` + `mock`) needs **zero API keys** and produces real pipeline output with sample fixtures and a deterministic booking code.
 
-> **Important disclaimer**  
-> Automating interactions with 1xBet (or any bookmaker) almost certainly violates their Terms of Service and can result in account suspension or legal consequences. This project is provided for educational and research purposes. Use the Playwright builder at your own risk. Prefer the mock / external API adapters for safe testing.
-
----
-
-## Architecture (4 stages)
-
-1. **Parse Rule** (`/api/parse-rule`) — LLM + deterministic fallback → strict Pydantic schema  
-2. **Scout Matches** (`/api/scout-matches`) — pluggable `StatsProvider` + Poisson engine  
-3. **Generate Code** (`/api/generate-code`) — Playwright browser builder **or** external booking API  
-4. **Dashboard** — dark trading-terminal UI with live SSE progress feed
+> **Disclaimer**  
+> Automating 1xBet (or any bookmaker) almost certainly violates their Terms of Service and can get accounts banned. The Playwright builder is included for research; prefer `SLIP_BUILDER=mock` or an official partner API.
 
 ---
 
-## Quick start
+## One-command start
 
 ```bash
-# 1. Clone & enter
 git clone https://github.com/heidif24/tactica24-game.git
 cd tactica24-game
 
-# 2. Python environment
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# 3. Playwright browsers (only needed for Adapter A)
-playwright install chromium
+cp .env.example .env               # defaults: mock stats + mock builder
 
-# 4. Environment
-cp .env.example .env
-# edit .env — at minimum leave STATS_PROVIDER=mock and SLIP_BUILDER=mock
-
-# 5. Run backend
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-
-# 6. Open the dashboard
-# simply open frontend/index.html in a browser
-# or serve it:  python -m http.server 3000 --directory frontend
 ```
 
-The UI talks to `http://localhost:8000` by default (CORS enabled).
+Open **http://localhost:8000** — the dashboard is served by FastAPI.
+
+Click a preset chip → **Run Pipeline**. You should see:
+1. Rule parsed  
+2. Fixtures scanned + ranked by Poisson P(0 corners)  
+3. Mock market match  
+4. Booking code like `SF1A2B3C4D`
 
 ---
 
-## Configuration (`.env`)
+## Go live (optional)
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `STATS_PROVIDER` | `mock` | `mock` \| `api_football` \| `footystats` |
-| `API_FOOTBALL_KEY` | — | RapidAPI / API-Football key |
-| `FOOTYSTATS_KEY` | — | FootyStats API key |
-| `SLIP_BUILDER` | `mock` | `mock` \| `playwright` \| `api` |
-| `ONEXBET_BASE_URL` | `https://1xbet.ng` | Target 1xBet domain |
-| `HEADLESS` | `true` | Playwright headless mode |
-| `BOOKING_API_URL` | — | External slip-booking endpoint |
-| `BOOKING_API_KEY` | — | Bearer token for external API |
-| `OPENAI_API_KEY` | — | Optional LLM rule parser |
-| `LLM_PROVIDER` | `none` | `none` \| `openai` \| `anthropic` \| `gemini` |
+### Stats
+
+```env
+STATS_PROVIDER=api_football
+API_FOOTBALL_KEY=your_key_here
+# If using RapidAPI instead of api-sports.io direct:
+# API_FOOTBALL_BASE=https://api-football-v1.p.rapidapi.com/v3
+# API_FOOTBALL_HOST=api-football-v1.p.rapidapi.com
+```
+
+Or FootyStats:
+
+```env
+STATS_PROVIDER=footystats
+FOOTYSTATS_KEY=your_key_here
+```
+
+### Slip builder
+
+```env
+SLIP_BUILDER=playwright
+ONEXBET_BASE_URL=https://1xbet.ng
+HEADLESS=false          # watch the browser while tuning selectors
+playwright install chromium
+```
+
+All DOM selectors live in `backend/builders/playwright_builder.py` → `SELECTORS` dict. Update them when 1xBet changes their markup; core flow stays untouched.
+
+Or plug a third-party booking API:
+
+```env
+SLIP_BUILDER=api
+BOOKING_API_URL=https://your-partner.example
+BOOKING_API_KEY=...
+```
+
+### LLM parser (optional)
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+```
+
+Without an LLM key the deterministic parser covers common corner-interval prompts.
 
 ---
 
-## Project layout
+## Architecture
+
+| Stage | Endpoint | Module |
+|-------|----------|--------|
+| 1 Parse rule | `POST /api/parse-rule` | `backend/parser.py` |
+| 2 Scout | `POST /api/scout-matches` | `backend/stats_engine.py` |
+| 3 Build slip | `POST /api/generate-code` | `backend/builders/*` |
+| Full SSE | `POST /api/pipeline` | `backend/main.py` |
+| UI | `GET /` | `frontend/index.html` |
+
+### Poisson model
+
+```
+λ = (0.55·c90_for + 0.45·opp_c90_against) × first15_share × (window_min / 15)
+P(X=0) = e^(-λ)
+fair_odds = 1 / P
+```
+
+Selections below `min_probability` are dropped; top `max_legs` by probability are returned.
+
+Missing / suspended 1xBet micro-markets are skipped; remaining legs still save.
+
+---
+
+## Project tree
 
 ```
 backend/
-  main.py                 # FastAPI + SSE
-  models.py               # Pydantic schemas
-  parser.py               # Rule parser (LLM + fallback)
-  stats_engine.py         # Poisson engine + StatsProvider
+  main.py
+  models.py
+  parser.py
+  stats_engine.py
   builders/
     __init__.py
-    playwright_builder.py # Stealth Chromium + selectors dict
-    api_builder.py        # External booking API adapter
-    mock_builder.py       # Deterministic demo builder
+    mock_builder.py
+    playwright_builder.py
+    api_builder.py
 frontend/
-  index.html              # Single-file dark terminal UI
+  index.html
 .env.example
 requirements.txt
 README.md
@@ -88,27 +129,6 @@ README.md
 
 ---
 
-## Core math (early-interval corners)
-
-```
-λ = weighted_corner_rate × (window_minutes / 90)
-P(X = 0) = e^(-λ)
-fair_odds = 1 / P(X = 0)
-```
-
-`weighted_corner_rate` blends the team’s corners-for per 90 and the opponent’s corners-against per 90, then applies a first-15-minute split factor (configurable, default ≈ 0.22 of full-match corners occur in the opening 15 minutes).
-
----
-
-## Safety & graceful degradation
-
-- Missing or suspended micro-markets are skipped; remaining valid legs are still saved.
-- All Playwright selectors live in a single `SELECTORS` dictionary at the top of `playwright_builder.py`.
-- Configurable timeouts and retry logic.
-- Mock provider + mock builder let the entire pipeline run offline with realistic sample data.
-
----
-
 ## License
 
-MIT — use at your own risk. No warranty. Not financial advice.
+MIT — no warranty. Not financial advice. Use at your own risk.

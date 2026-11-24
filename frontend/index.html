@@ -58,7 +58,7 @@
 
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
       <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>
-      <p class="text-xs text-terminal-warn">Current analysis model: football corner intervals. Other markets and exact interval booking are not enabled until their data and bookmaker mappings are verified.</p>
+      <p class="text-xs text-terminal-warn">Analysis coverage: corners (including intervals where exact markets exist), full-match goals, BTTS and 1X2 where statistics support them. Minute-level goals/cards are never inferred from full-match averages. Verified historical calibration is required before a live code can be issued.</p>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
         placeholder="Example: Find upcoming matches where the away team is least likely to get a corner in the first 5 minutes. Use at most 2 selections and return a code only if the exact market is available."></textarea>
@@ -178,6 +178,8 @@
       feed.scrollTop = feed.scrollHeight;
     }
 
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[ch])); }
+
     function statusBadge(status) {
       const map = {
         matched: 'bg-terminal-accent/20 text-terminal-accent',
@@ -192,16 +194,16 @@
       document.getElementById('legsTable').innerHTML = legs.map(l => `
         <div class="border border-terminal-border rounded-lg p-4 bg-terminal-bg">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div class="font-medium text-sm">${l.home_team} vs ${l.away_team}</div>
+            <div class="font-medium text-sm">${escapeHtml(l.home_team)} vs ${escapeHtml(l.away_team)}</div>
             ${statusBadge(l.status)}
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mono text-terminal-muted">
-            <div><span class="text-terminal-text">${l.team_name}</span><br/>${l.direction} ${l.line} · ${l.time_window}</div>
-            <div>P = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>λ = ${l.lambda ?? l.lambda_}</div>
-            <div>Fair <span class="text-terminal-text">${l.fair_odds}</span><br/>1xBet ${l.found_odds ?? '—'}</div>
-            <div class="col-span-2 sm:col-span-1">${l.league}<br/><span class="text-[10px]">${l.market_note || ''}</span></div>
+            <div><span class="text-terminal-text">${escapeHtml(l.team_name)}</span><br/>${escapeHtml(l.direction)} ${escapeHtml(l.line)} · ${escapeHtml(l.time_window)}</div>
+            <div>P = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>λ = ${escapeHtml(l.lambda ?? l.lambda_)}</div>
+            <div>Fair <span class="text-terminal-text">${l.fair_odds}</span><br/>Bookmaker ${escapeHtml(l.found_odds ?? '—')}</div>
+            <div class="col-span-2 sm:col-span-1">${escapeHtml(l.league)}<br/><span class="text-[10px]">${escapeHtml(l.calibration_status || 'uncalibrated')} · n=${escapeHtml(l.calibration_samples || 0)}<br/>${escapeHtml(l.market_note || '')}</span></div>
           </div>
-          <p class="mt-2 text-[11px] text-terminal-muted">${l.reasoning || ''}</p>
+          <p class="mt-2 text-[11px] text-terminal-muted">${escapeHtml(l.reasoning || '')}</p>
         </div>`).join('');
       document.getElementById('results').classList.remove('hidden');
     }
@@ -270,6 +272,7 @@
             log(`[${event.stage_name}] ${event.message}`);
             if (event.done) {
               document.getElementById('results').classList.remove('hidden');
+              if (event.detail?.legs?.length) renderLegs(event.detail.legs);
               if (event.detail?.booking_code) {
                 showCode(event.detail.booking_code, event.detail.screenshot_b64);
               } else {
@@ -278,11 +281,13 @@
             }
           }
         }
+        conversationHistory.push(prompt);
+        if (conversationHistory.length > 8) conversationHistory.shift();
       } catch (err) {
         log(String(err), true);
       } finally {
         document.getElementById('runBtn').disabled = false;
-        document.getElementById('runBtn').textContent = 'Find best code';
+        document.getElementById('runBtn').textContent = 'Analyse & find code';
       }
     });
   </script>

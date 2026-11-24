@@ -1,1 +1,1 @@
-market_category,sub_market,time_window,predicted_probability,outcome,predicted_at,settled_at
+market_category,sub_market,time_window,model_version,predicted_probability,outcome,predicted_at,kickoff_at,settled_at

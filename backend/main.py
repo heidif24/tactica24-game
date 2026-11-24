@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.builders import get_builder
 from backend.models import (
@@ -144,7 +144,7 @@ class PipelineRequest(BaseModel):
     min_probability: Optional[float] = None
     base_url: Optional[str] = None
     bookmaker: Optional[str] = None
-    context: list[str] = []
+    context: list[str] = Field(default_factory=list)
 
 
 def _sse(event: PipelineProgress) -> str:

@@ -83,6 +83,7 @@ class ManageBetCodesMarketDiscovery:
 
     @staticmethod
     def _period_matches(label: str, period: str) -> bool:
+        label = label.lower()
         if period in ("full_match", "90", "match"):
             # A period-specific market is not a full-match market.
             return not re.search(r"first half|second half|1st half|2nd half|\bht\b|\bminute\b|min\s*\d", label)

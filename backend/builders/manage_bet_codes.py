@@ -44,6 +44,15 @@ class ManageBetCodesBuilder:
                 logs=logs + ["No selections were supplied."],
             )
 
+        if self.require_calibrated:
+            uncalibrated = [s for s in selections if s.calibration_status != "calibrated"]
+            if uncalibrated:
+                return self._unavailable(
+                    selections,
+                    "Booking blocked: probability calibration is required, but one or more selections lack a sufficiently large out-of-sample historical calibration sample. Add verified historical forecasts before live code creation.",
+                    logs,
+                )
+
         discovery = ManageBetCodesMarketDiscovery(self.base, self.key, self.timeout)
         picks: list[dict] = []
         try:
@@ -97,15 +106,6 @@ class ManageBetCodesBuilder:
         except Exception as exc:
             logger.exception("Manage Bet Codes market discovery failed")
             return self._unavailable(selections, f"Market discovery failed: {exc}", logs)
-
-        if self.require_calibrated:
-            uncalibrated = [s for s in selections if s.calibration_status != "calibrated"]
-            if uncalibrated:
-                return self._unavailable(
-                    selections,
-                    "Booking blocked: probability calibration is required, but one or more selections lack a sufficiently large out-of-sample historical calibration sample. Add verified historical forecasts before live code creation.",
-                    logs,
-                )
 
         headers = {
             "X-API-Key": self.key,

@@ -7,11 +7,11 @@ from backend.models import GenerateCodeResponse, Selection
 class SlipBuilder(Protocol):
     async def build(self, selections: list[Selection], base_url: str | None = None) -> GenerateCodeResponse: ...
 
-def get_builder() -> SlipBuilder:
+def get_builder(bookmaker: str | None = None) -> SlipBuilder:
     name = os.getenv("SLIP_BUILDER", "mock").lower()
     if name in ("manage_bet_codes", "mbc"):
         from backend.builders.manage_bet_codes import ManageBetCodesBuilder
-        return ManageBetCodesBuilder()
+        return ManageBetCodesBuilder(bookmaker=bookmaker)
     if name == "api":
         from backend.builders.api_builder import ExternalCodeApiBuilder
         return ExternalCodeApiBuilder()

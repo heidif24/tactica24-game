@@ -115,6 +115,7 @@ class ScoutResponse(BaseModel):
 class GenerateCodeRequest(BaseModel):
     selections: list[Selection]
     base_url: Optional[str] = None
+    bookmaker: Optional[str] = None
 
 class GenerateCodeResponse(BaseModel):
     booking_code: Optional[str]

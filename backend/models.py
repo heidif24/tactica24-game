@@ -102,6 +102,7 @@ class Selection(BaseModel):
     calibration_samples: int = 0
     raw_probability: Optional[float] = None
     calibrated_probability: Optional[float] = None
+    model_version: str = "tactica24-poisson-v2"
     model_config = {"populate_by_name": True}
 
 class ScoutRequest(BaseModel):

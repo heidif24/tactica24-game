@@ -88,7 +88,10 @@ def calibrate_probability(
     file_path = Path(path)
     if not file_path.exists():
         return None, 0
-    rows = _load_rows(str(file_path.resolve()), file_path.stat().st_mtime)
+    try:
+        rows = _load_rows(str(file_path.resolve()), file_path.stat().st_mtime)
+    except (OSError, ValueError):
+        return None, 0
     matched = [
         row for row in rows
         if row["market_category"] == market_category.lower()

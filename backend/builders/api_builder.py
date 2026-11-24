@@ -71,7 +71,7 @@ class ExternalCodeApiBuilder:
         updated: list[Selection] = []
         for i, s in enumerate(selections):
             remote = remote_legs[i] if i < len(remote_legs) else {}
-            status = remote.get("status", "matched" if code else "unavailable")
+            status = remote.get("status", "unavailable")
             updated.append(
                 s.model_copy(
                     update={
@@ -83,9 +83,24 @@ class ExternalCodeApiBuilder:
             )
             logs.append(f"[api] {s.team_name} → {status}")
 
-        logs.append(f"[api] Booking code: {code}")
+        # A code is valid only when the partner explicitly confirms every leg.
+        import re
+        all_matched = len(remote_legs) == len(selections) and all(
+            leg.status == "matched" for leg in updated
+        )
+        valid_code = isinstance(code, str) and bool(re.fullmatch(r"[A-Za-z0-9]{4,32}", code))
+        if not (all_matched and valid_code):
+            logs.append("[api] No verified code: partner did not confirm a valid code and every requested leg.")
+            return GenerateCodeResponse(
+                booking_code=None,
+                legs=updated,
+                builder_used="api",
+                logs=logs,
+            )
+
+        logs.append(f"[api] Booking code verified: {code}")
         return GenerateCodeResponse(
-            booking_code=code,
+            booking_code=code.upper(),
             legs=updated,
             builder_used="api",
             logs=logs,

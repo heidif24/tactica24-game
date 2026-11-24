@@ -28,13 +28,36 @@ logger = logging.getLogger(__name__)
 DEFAULT_FIRST15_SHARE = 0.22
 
 
-def window_minutes(window: str) -> float:
+def window_bounds(window: str) -> tuple[float, float]:
     m = re.match(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", window)
     if not m:
-        return 5.0
+        return 0.0, 5.0
     start = int(m.group(1)) * 60 + int(m.group(2))
     end = int(m.group(3)) * 60 + int(m.group(4))
-    return max((end - start + 1) / 60.0, 0.5)
+    if end < start:
+        raise ValueError(f"Invalid interval: {window}")
+    return start / 60.0, (end + 1) / 60.0
+
+
+def window_minutes(window: str) -> float:
+    start, end = window_bounds(window)
+    return max(end - start, 0.5)
+
+
+def _live_fixture_window_is_future(fixture: Fixture, window: str) -> bool:
+    """Do not recommend a live interval once it has started."""
+    if fixture.status != MatchStatus.LIVE:
+        return True
+    try:
+        kickoff = datetime.fromisoformat(fixture.kickoff_utc.replace("Z", "+00:00"))
+        if kickoff.tzinfo is None:
+            kickoff = kickoff.replace(tzinfo=timezone.utc)
+        elapsed = max((datetime.now(timezone.utc) - kickoff.astimezone(timezone.utc)).total_seconds() / 60.0, 0.0)
+        start_min, _ = window_bounds(window)
+        return elapsed < start_min
+    except (TypeError, ValueError):
+        logger.warning("Skipping live fixture with invalid kickoff time: %s", fixture.fixture_id)
+        return False
 
 
 def poisson_zero(lambda_: float) -> float:
@@ -145,7 +168,7 @@ class ApiFootballProvider(StatsProvider):
             raise RuntimeError("API_FOOTBALL_KEY is required for api_football provider")
         self.base = os.getenv("API_FOOTBALL_BASE", "https://v3.football.api-sports.io").rstrip("/")
         self.rapid_host = os.getenv("API_FOOTBALL_HOST", "")
-        self._stat_cache: dict[int, dict[str, float]] = {}
+        self._stat_cache: dict[tuple[int, int, int], dict[str, float]] = {}
 
     def _headers(self) -> dict[str, str]:
         h = {"x-apisports-key": self.key}
@@ -167,42 +190,35 @@ class ApiFootballProvider(StatsProvider):
                 logger.warning("API-Football errors: %s", errors)
             return body.get("response") or []
 
-    async def _team_corner_rates(self, team_id: int, season: int) -> dict[str, float]:
-        if team_id in self._stat_cache:
-            return self._stat_cache[team_id]
+    async def _team_corner_rates(self, team_id: int, season: int, league_id: int) -> dict[str, float]:
+        cache_key = (team_id, season, league_id)
+        if cache_key in self._stat_cache:
+            return self._stat_cache[cache_key]
 
-        # Default fallbacks if stats endpoint fails / incomplete
-        defaults = {"c90_for": 4.8, "c90_against": 4.8, "first15_share": DEFAULT_FIRST15_SHARE}
-        try:
-            rows = await self._get("/teams/statistics", {
-                "team": team_id,
-                "season": season,
-                "league": 0,  # will be overridden per call when we know league
-            })
-            # When league unknown the endpoint needs league id — handled in caller.
-            # Keep defaults if empty.
-            if not rows:
-                self._stat_cache[team_id] = defaults
-                return defaults
-
-            stats = rows[0] if isinstance(rows, list) else rows
-            fixtures_played = (
-                (stats.get("fixtures") or {}).get("played") or {}
-            ).get("total") or 0
-            corners_for = (
-                (stats.get("corners") or {}).get("total") or {}
-            ).get("total")
-            # API-Football doesn't always expose corners in team statistics.
-            # Fall back to shots approximation or defaults.
-            if corners_for and fixtures_played:
-                c90 = float(corners_for) / fixtures_played * 90 / 90  # per match ≈ c90
-                defaults["c90_for"] = round(c90, 2)
-            self._stat_cache[team_id] = defaults
-            return defaults
-        except Exception as exc:
-            logger.debug("team stats %s failed: %s", team_id, exc)
-            self._stat_cache[team_id] = defaults
-            return defaults
+        rows = await self._get("/teams/statistics", {
+            "team": team_id,
+            "season": season,
+            "league": league_id,
+        })
+        if not rows:
+            raise RuntimeError(
+                f"API-Football returned no season statistics for team {team_id} in league {league_id}"
+            )
+        stats = rows[0] if isinstance(rows, list) else rows
+        fixtures_played = ((stats.get("fixtures") or {}).get("played") or {}).get("total") or 0
+        corners_for = ((stats.get("corners") or {}).get("total") or {}).get("total")
+        if not corners_for or not fixtures_played:
+            raise RuntimeError(
+                f"API-Football did not supply usable corner totals for team {team_id}; "
+                "the app will not substitute assumed team averages"
+            )
+        rates = {
+            "c90_for": round(float(corners_for) / float(fixtures_played), 2),
+            "c90_against": 4.8,
+            "first15_share": DEFAULT_FIRST15_SHARE,
+        }
+        self._stat_cache[cache_key] = rates
+        return rates
 
     async def _enrich_from_fixture_stats(
         self, fixture_id: int, home_id: int, away_id: int
@@ -248,8 +264,8 @@ class ApiFootballProvider(StatsProvider):
             else:
                 rows = await self._get("/fixtures", params)
         except Exception as exc:
-            logger.error("API-Football fixture fetch failed: %s — falling back to mock", exc)
-            return await MockStatsProvider().fetch_fixtures(status)
+            logger.exception("API-Football fixture fetch failed")
+            raise RuntimeError(f"Live API-Football fixture fetch failed: {exc}") from exc
 
         fixtures: list[Fixture] = []
         seen: set[str] = set()
@@ -277,12 +293,16 @@ class ApiFootballProvider(StatsProvider):
 
             # Season rates — best-effort; defaults are fine for Poisson ranking
             season = league.get("season") or datetime.now(timezone.utc).year
-            h_stats = await self._team_corner_rates(int(home_id), int(season))
-            a_stats = await self._team_corner_rates(int(away_id), int(season))
+            league_id = int(league.get("id") or 0)
+            if not league_id:
+                raise RuntimeError("API-Football fixture is missing its league identifier")
+            h_stats = await self._team_corner_rates(int(home_id), int(season), league_id)
+            a_stats = await self._team_corner_rates(int(away_id), int(season), league_id)
 
-            # Cross-fill against rates (opponent perspective)
-            h_c90_against = a_stats["c90_for"]
-            a_c90_against = h_stats["c90_for"]
+            # Preserve each team's own against-rate. The previous cross-fill
+            # accidentally substituted the opponent's attacking rate.
+            h_c90_against = h_stats["c90_against"]
+            a_c90_against = a_stats["c90_against"]
 
             fixtures.append(Fixture(
                 fixture_id=fid,
@@ -304,8 +324,7 @@ class ApiFootballProvider(StatsProvider):
             ))
 
         if not fixtures:
-            logger.warning("API-Football returned 0 fixtures — using mock fallback")
-            return await MockStatsProvider().fetch_fixtures(status)
+            raise RuntimeError("API-Football returned no fixtures; refusing to substitute demonstration fixtures")
 
         logger.info("API-Football: %d fixtures loaded", len(fixtures))
         return fixtures
@@ -338,8 +357,8 @@ class FootyStatsProvider(StatsProvider):
                 data = resp.json()
             rows = data.get("data") or []
         except Exception as exc:
-            logger.error("FootyStats fetch failed: %s — mock fallback", exp if False else exc)
-            return await MockStatsProvider().fetch_fixtures(status)
+            logger.exception("FootyStats fetch failed")
+            raise RuntimeError(f"Live FootyStats fetch failed: {exc}") from exc
 
         fixtures: list[Fixture] = []
         for row in rows[:40]:
@@ -348,10 +367,14 @@ class FootyStatsProvider(StatsProvider):
             fid = str(row.get("id") or f"{home_name}-{away_name}")
 
             # FootyStats often exposes pre-match corner averages
-            h_for = float(row.get("team_a_corners_per_match") or row.get("corners_potential") or 4.8)
-            a_for = float(row.get("team_b_corners_per_match") or 4.8)
-            h_against = float(row.get("team_a_corners_per_match_overall") or a_for)
-            a_against = float(row.get("team_b_corners_per_match_overall") or h_for)
+            required = ("team_a_corners_per_match", "team_b_corners_per_match")
+            if any(row.get(key) is None for key in required):
+                logger.warning("Skipping FootyStats fixture %s: corner averages missing", fid)
+                continue
+            h_for = float(row["team_a_corners_per_match"])
+            a_for = float(row["team_b_corners_per_match"])
+            h_against = float(row.get("team_a_corners_against_per_match") or 4.8)
+            a_against = float(row.get("team_b_corners_against_per_match") or 4.8)
 
             st_raw = (row.get("status") or "incomplete").lower()
             match_status = MatchStatus.LIVE if st_raw in ("live", "incomplete") and row.get("time") not in (None, "0") else MatchStatus.UPCOMING
@@ -385,7 +408,7 @@ class FootyStatsProvider(StatsProvider):
             ))
 
         if not fixtures:
-            return await MockStatsProvider().fetch_fixtures(status)
+            raise RuntimeError("FootyStats returned no matching fixtures; refusing to substitute demonstration fixtures")
         return fixtures
 
 
@@ -407,6 +430,8 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
     candidates: list[Selection] = []
 
     for fx in fixtures:
+        if not _live_fixture_window_is_future(fx, rule.time_window):
+            continue
         sides = _candidate_sides(rule, fx)
         for side, team_name, c_for, c_against, first15 in sides:
             lam = interval_lambda(c_for, c_against, w_min, first15)
@@ -457,14 +482,14 @@ def _candidate_sides(
 ) -> list[tuple[str, str, float, float, float]]:
     h, a = fx.home_stats, fx.away_stats
     if rule.selection_target == SelectionTarget.HOME:
-        return [("home", h.team_name, h.c90_for, a.c90_against, h.first15_share)]
+        return [("home", h.team_name, h.c90_for, h.c90_against, h.first15_share)]
     if rule.selection_target == SelectionTarget.AWAY:
-        return [("away", a.team_name, a.c90_for, h.c90_against, a.first15_share)]
+        return [("away", a.team_name, a.c90_for, a.c90_against, a.first15_share)]
     if rule.selection_target == SelectionTarget.TOTAL:
         total_for = h.c90_for + a.c90_for
-        return [("total", f"{h.team_name} + {a.team_name}", total_for, 0.0,
+        return [("total", f"{h.team_name} + {a.team_name}", total_for, total_for,
                  (h.first15_share + a.first15_share) / 2)]
     return [
-        ("home", h.team_name, h.c90_for, a.c90_against, h.first15_share),
-        ("away", a.team_name, a.c90_for, h.c90_against, a.first15_share),
+        ("home", h.team_name, h.c90_for, h.c90_against, h.first15_share),
+        ("away", a.team_name, a.c90_for, a.c90_against, a.first15_share),
     ]

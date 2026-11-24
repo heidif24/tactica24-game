@@ -58,10 +58,26 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 @app.get("/api/health")
 async def health():
+    stats_provider = os.getenv("STATS_PROVIDER", "mock").lower()
+    slip_builder = os.getenv("SLIP_BUILDER", "mock").lower()
+    demo_mode = stats_provider == "mock" or slip_builder == "mock"
+    stats_configured = (
+        (stats_provider == "footystats" and bool(os.getenv("FOOTYSTATS_KEY")))
+        or (stats_provider == "api_football" and bool(os.getenv("API_FOOTBALL_KEY")))
+        or stats_provider == "mock"
+    )
+    builder_configured = (
+        slip_builder == "mock"
+        or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
+    )
     return {
-        "status": "ok",
-        "stats_provider": os.getenv("STATS_PROVIDER", "mock"),
-        "slip_builder": os.getenv("SLIP_BUILDER", "mock"),
+        "status": "degraded" if demo_mode or not stats_configured or not builder_configured else "ok",
+        "operational": not demo_mode and stats_configured and builder_configured,
+        "demo_mode": demo_mode,
+        "stats_configured": stats_configured,
+        "builder_configured": builder_configured,
+        "stats_provider": stats_provider,
+        "slip_builder": slip_builder,
         "llm_provider": os.getenv("LLM_PROVIDER", "none"),
     }
 

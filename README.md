@@ -2,12 +2,19 @@
 
 **Natural-language betting rule → Poisson corner scouting → 1xBet booking code**
 
-Complete, runnable end-to-end app. Default mode (`mock` + `mock`) needs **zero API keys** and produces real pipeline output with sample fixtures and a deterministic booking code.
+Complete, runnable end-to-end app. Default mode (`mock` + `mock`) needs **zero API keys** and demonstrates the analysis pipeline with sample fixtures. It does **not** create a real bookmaker code.
 
 > **Disclaimer**  
 > Automating 1xBet (or any bookmaker) almost certainly violates their Terms of Service and can get accounts banned. The Playwright builder is included for research; prefer `SLIP_BUILDER=mock` or an official partner API.
 
 ---
+
+> **Production-readiness note (24 Nov 2026)**  
+> The default `mock` providers are demonstration-only. They do not query live fixtures or a bookmaker and will never issue a booking code. The health endpoint reports this as `degraded`. A real code is returned only when a configured booking API confirms every requested leg and returns a valid code. The unverified Playwright bookmaker automation path is disabled because its generic odds selectors could click the wrong market.
+>
+> The current Poisson output is a model estimate, not a proven or calibrated success probability. The first-15-minute share is an assumption unless the data source supplies interval-level history. No amount of model ranking guarantees a winning bet. Before treating the output as decision-grade, the engine needs historical backtesting, probability calibration, current market/odds validation, and out-of-sample evaluation. In particular, do not use the displayed percentage as a verified hit rate.
+>
+> For live operation, configure a supported live statistics source and an authorised booking-code API. This repository does not contain bookmaker credentials or a booking API endpoint; those must be supplied as deployment secrets and the external service must implement the contract below.
 
 ## One-command start
 
@@ -29,8 +36,8 @@ Open **http://localhost:8000** — the dashboard is served by FastAPI.
 Click a preset chip → **Run Pipeline**. You should see:
 1. Rule parsed  
 2. Fixtures scanned + ranked by Poisson P(0 corners)  
-3. Mock market match  
-4. Booking code like `SF1A2B3C4D`
+3. Demo builder explicitly reports that no bookmaker was contacted  
+4. No booking code is issued in demo mode
 
 ---
 
@@ -46,7 +53,7 @@ API_FOOTBALL_KEY=your_key_here
 # API_FOOTBALL_HOST=api-football-v1.p.rapidapi.com
 ```
 
-Or FootyStats:
+Or FootyStats (corner-rate fields are validated before a fixture is used):
 
 ```env
 STATS_PROVIDER=footystats
@@ -54,6 +61,8 @@ FOOTYSTATS_KEY=your_key_here
 ```
 
 ### Slip builder
+
+For a real booking code, set `SLIP_BUILDER=api` and configure an authorised partner endpoint. A code is displayed only when the partner confirms every requested leg. The `mock` builder is a simulation and the `playwright` builder is intentionally disabled until exact market matching can be guaranteed.
 
 ```env
 SLIP_BUILDER=playwright

@@ -60,7 +60,7 @@
       <label class="block text-sm font-medium text-terminal-muted">Betting rule (plain English)</label>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
-        placeholder="Find upcoming or live football matches where Team 1 or Team 2 is statistically unlikely to get a corner in the first 5 minutes, minimum 75% probability, max 3 legs"></textarea>
+        placeholder="Find upcoming football matches where Team 1 or Team 2 is statistically unlikely to get a corner in the first 5 minutes, minimum 75% probability, max 3 legs"></textarea>
 
       <div class="flex flex-wrap gap-2">
         <button data-preset="No corner in first 5 mins (safest team), min 75%, max 3 legs"
@@ -74,7 +74,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
         <div>
           <label class="text-xs text-terminal-muted">Max legs</label>
-          <input id="maxLegs" type="number" min="1" max="10" value="3"
+          <input id="maxLegs" type="number" min="1" max="10" value="1"
             class="w-full mt-1 bg-terminal-bg border border-terminal-border rounded-lg px-3 py-2 text-sm mono focus:outline-none focus:border-terminal-accent" />
         </div>
         <div>
@@ -141,8 +141,11 @@
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
       const el = document.getElementById('healthBadge');
-      el.textContent = `ok · stats=${d.stats_provider} · builder=${d.slip_builder}`;
-      el.classList.add('text-terminal-accent', 'border-terminal-accent/40');
+      el.textContent = d.operational
+        ? 'live · stats=' + d.stats_provider + ' · builder=' + d.slip_builder
+        : 'demo / setup needed · stats=' + d.stats_provider + ' · builder=' + d.slip_builder;
+      el.classList.add(d.operational ? 'text-terminal-accent' : 'text-terminal-warn');
+      if (!d.operational) el.classList.add('border-terminal-warn/40');
     }).catch(() => {
       document.getElementById('healthBadge').textContent = 'backend offline';
       document.getElementById('healthBadge').classList.add('text-terminal-danger');

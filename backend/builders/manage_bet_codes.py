@@ -175,9 +175,24 @@ class ManageBetCodesBuilder:
         # Current API contract returns these fields at the response root.
         code = booked.get("code")
         verified = booked.get("verified") is True
-        failures = booked.get("failures") or []
+        failures = booked.get("failures") or booked.get("skipped") or []
         booked_picks = booked.get("picks") or []
-        complete = len(booked_picks) == len(selections) and not failures
+        counts = booked.get("counts") or {}
+        reported_count = (
+            booked.get("picks_count")
+            or booked.get("selections_count")
+            or counts.get("booked")
+            or counts.get("converted")
+        )
+        complete = (
+            not booked.get("partial", False)
+            and not failures
+            and (not booked_picks or len(booked_picks) == len(selections))
+            and (reported_count is None or int(reported_count) == len(selections))
+        )
+        # The provider's verified=true flag means its own load-back succeeded.
+        # Strict resolution + strict booking + no partial/skipped legs are the
+        # completeness proof when the API omits a per-pick list in book response.
         if not (
             booked.get("success") is True
             and verified
@@ -187,10 +202,10 @@ class ManageBetCodesBuilder:
         ):
             return self._unavailable(
                 selections,
-                "Provider did not verify every requested selection; no code was released.",
+                "Provider did not verify a complete code for every requested selection; no code was released.",
                 logs + [
                     f"Book response: success={booked.get('success')}, verified={verified}, "
-                    f"picks={len(booked_picks)}/{len(selections)}, failures={len(failures)}"
+                    f"reported_count={reported_count}, picks={len(booked_picks)}, failures={len(failures)}"
                 ],
             )
 

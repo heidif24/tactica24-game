@@ -96,11 +96,11 @@
 
       <button id="runBtn"
         class="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-terminal-accent text-terminal-bg font-semibold text-sm hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed">
-        Run Pipeline
+        Find best code
       </button>
     </section>
 
-    <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5">
+    <section class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
       <div class="flex flex-wrap gap-3 mb-4" id="steps">
         <div data-step="1" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">1 · Parse</div>
         <div data-step="2" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">2 · Scout</div>
@@ -227,6 +227,7 @@
       const baseUrl = document.getElementById('baseUrl').value || null;
 
       document.getElementById('runBtn').disabled = true;
+      document.getElementById('runBtn').textContent = 'Analysing…';
       document.getElementById('logFeed').innerHTML = '';
       document.getElementById('results').classList.add('hidden');
       document.getElementById('codeCard').classList.add('hidden');
@@ -276,6 +277,7 @@
         log(String(err), true);
       } finally {
         document.getElementById('runBtn').disabled = false;
+        document.getElementById('runBtn').textContent = 'Find best code';
       }
     });
   </script>

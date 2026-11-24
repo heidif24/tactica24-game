@@ -100,6 +100,8 @@ class Selection(BaseModel):
     bookmaker_pick_key: Optional[str] = None
     calibration_status: str = "uncalibrated"
     calibration_samples: int = 0
+    raw_probability: Optional[float] = None
+    calibrated_probability: Optional[float] = None
     model_config = {"populate_by_name": True}
 
 class ScoutRequest(BaseModel):

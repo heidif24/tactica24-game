@@ -57,10 +57,10 @@
     </header>
 
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
-      <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>
+      <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>\n      <p class="text-xs text-terminal-warn">Current analysis model: football corner intervals. Other markets and exact interval booking are not enabled until their data and bookmaker mappings are verified.</p>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
-        placeholder="Example: Find the safest upcoming football selections for tomorrow, analyse first-half goals and corners, use a maximum of 3 legs, and only return a verified SportyBet code."></textarea>
+        placeholder="Example: Find upcoming matches where the away team is least likely to get a corner in the first 5 minutes. Use at most 2 selections and return a code only if the exact market is available."></textarea>
 
       <div class="flex flex-wrap gap-2">
         <button data-preset="No corner in first 5 mins (safest team), min 75%, max 3 legs"

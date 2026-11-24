@@ -46,7 +46,7 @@ origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins if origins != ["*"] else ["*"],
-    allow_credentials=True,
+    allow_credentials=origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,14 +71,25 @@ async def health():
         or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
         or (slip_builder in ("manage_bet_codes", "mbc") and bool(os.getenv("MANAGE_BET_CODES_API_KEY")))
     )
-    # Current scouting emits interval-corner selections without provider-native
-    # market keys. Keep MBC mode degraded until exact market discovery is wired.
-    market_mapping_ready = slip_builder not in ("manage_bet_codes", "mbc")
-    operational = not demo_mode and stats_configured and builder_configured and market_mapping_ready
+    market_mapping_ready = slip_builder not in ("manage_bet_codes", "mbc") or bool(os.getenv("MANAGE_BET_CODES_API_KEY"))
+    calibration_path = Path(os.getenv("T24_CALIBRATION_FILE", "data/historical_outcomes.csv"))
+    calibration_data_ready = calibration_path.exists()
+    llm_provider = os.getenv("LLM_PROVIDER", "none").lower()
+    llm_configured = (
+        (llm_provider == "openai" and bool(os.getenv("OPENAI_API_KEY")))
+        or (llm_provider == "anthropic" and bool(os.getenv("ANTHROPIC_API_KEY")))
+        or llm_provider == "none"
+    )
+    operational = (
+        not demo_mode and stats_configured and builder_configured
+        and market_mapping_ready and calibration_data_ready and llm_configured
+    )
     return {
         "status": "ok" if operational else "degraded",
         "operational": operational,
         "market_mapping_ready": market_mapping_ready,
+        "calibration_data_ready": calibration_data_ready,
+        "llm_configured": llm_configured,
         "demo_mode": demo_mode,
         "stats_configured": stats_configured,
         "builder_configured": builder_configured,
@@ -169,7 +180,7 @@ async def api_pipeline(body: PipelineRequest):
 
             yield _sse(PipelineProgress(
                 stage=2, stage_name="Scanning Fixture Stats",
-                message="Fetching fixtures and computing Poisson early-interval probabilities…",
+                message=f"Analysing {parsed.rule.market_category} markets for {parsed.rule.time_window} using available match statistics…",
             ))
             await asyncio.sleep(0.1)
             scout = await scout_matches(parsed.rule)
@@ -192,7 +203,7 @@ async def api_pipeline(body: PipelineRequest):
 
             yield _sse(PipelineProgress(
                 stage=3, stage_name="Resolving Bookmaker Markets",
-                message=f"Checking exact markets at {os.getenv('MANAGE_BET_CODES_BOOKMAKER', 'configured bookmaker')} and preparing a strict booking…",
+                message=f"Discovering exact {parsed.rule.market_category} markets at {body.bookmaker or os.getenv('MANAGE_BET_CODES_BOOKMAKER', 'configured bookmaker')} before strict resolution…",
             ))
             await asyncio.sleep(0.05)
             builder = get_builder(bookmaker=body.bookmaker)

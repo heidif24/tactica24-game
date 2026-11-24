@@ -248,8 +248,8 @@ class ApiFootballProvider(StatsProvider):
             else:
                 rows = await self._get("/fixtures", params)
         except Exception as exc:
-            logger.error("API-Football fixture fetch failed: %s — falling back to mock", exc)
-            return await MockStatsProvider().fetch_fixtures(status)
+            logger.exception("API-Football fixture fetch failed")
+            raise RuntimeError(f"Live API-Football fixture fetch failed: {exc}") from exc
 
         fixtures: list[Fixture] = []
         seen: set[str] = set()
@@ -280,9 +280,10 @@ class ApiFootballProvider(StatsProvider):
             h_stats = await self._team_corner_rates(int(home_id), int(season))
             a_stats = await self._team_corner_rates(int(away_id), int(season))
 
-            # Cross-fill against rates (opponent perspective)
-            h_c90_against = a_stats["c90_for"]
-            a_c90_against = h_stats["c90_for"]
+            # Preserve each team's own against-rate. The previous cross-fill
+            # accidentally substituted the opponent's attacking rate.
+            h_c90_against = h_stats["c90_against"]
+            a_c90_against = a_stats["c90_against"]
 
             fixtures.append(Fixture(
                 fixture_id=fid,
@@ -304,8 +305,7 @@ class ApiFootballProvider(StatsProvider):
             ))
 
         if not fixtures:
-            logger.warning("API-Football returned 0 fixtures — using mock fallback")
-            return await MockStatsProvider().fetch_fixtures(status)
+            raise RuntimeError("API-Football returned no fixtures; refusing to substitute demonstration fixtures")
 
         logger.info("API-Football: %d fixtures loaded", len(fixtures))
         return fixtures
@@ -338,8 +338,8 @@ class FootyStatsProvider(StatsProvider):
                 data = resp.json()
             rows = data.get("data") or []
         except Exception as exc:
-            logger.error("FootyStats fetch failed: %s — mock fallback", exp if False else exc)
-            return await MockStatsProvider().fetch_fixtures(status)
+            logger.exception("FootyStats fetch failed")
+            raise RuntimeError(f"Live FootyStats fetch failed: {exc}") from exc
 
         fixtures: list[Fixture] = []
         for row in rows[:40]:
@@ -385,7 +385,7 @@ class FootyStatsProvider(StatsProvider):
             ))
 
         if not fixtures:
-            return await MockStatsProvider().fetch_fixtures(status)
+            raise RuntimeError("FootyStats returned no matching fixtures; refusing to substitute demonstration fixtures")
         return fixtures
 
 
@@ -457,14 +457,14 @@ def _candidate_sides(
 ) -> list[tuple[str, str, float, float, float]]:
     h, a = fx.home_stats, fx.away_stats
     if rule.selection_target == SelectionTarget.HOME:
-        return [("home", h.team_name, h.c90_for, a.c90_against, h.first15_share)]
+        return [("home", h.team_name, h.c90_for, h.c90_against, h.first15_share)]
     if rule.selection_target == SelectionTarget.AWAY:
-        return [("away", a.team_name, a.c90_for, h.c90_against, a.first15_share)]
+        return [("away", a.team_name, a.c90_for, a.c90_against, a.first15_share)]
     if rule.selection_target == SelectionTarget.TOTAL:
         total_for = h.c90_for + a.c90_for
         return [("total", f"{h.team_name} + {a.team_name}", total_for, 0.0,
                  (h.first15_share + a.first15_share) / 2)]
     return [
-        ("home", h.team_name, h.c90_for, a.c90_against, h.first15_share),
-        ("away", a.team_name, a.c90_for, h.c90_against, a.first15_share),
+        ("home", h.team_name, h.c90_for, h.c90_against, h.first15_share),
+        ("away", a.team_name, a.c90_for, a.c90_against, a.first15_share),
     ]

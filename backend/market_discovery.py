@@ -133,9 +133,9 @@ class ManageBetCodesMarketDiscovery:
             # A period-specific market is not a full-match market.
             return not re.search(r"first half|second half|1st half|2nd half|\bht\b|\bminute\b|min\s*\d", label)
         if period == "00:00-44:59":
-            return any(term in label for term in ("first half", "1st half", "half time", "ht"))
+            return bool(re.search(r"\b(first half|1st half|half time|ht)\b", label))
         if period == "45:00-89:59":
-            return any(term in label for term in ("second half", "2nd half", "2h"))
+            return bool(re.search(r"\b(second half|2nd half|2h)\b", label))
         start_end = re.search(r"(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})", period)
         if not start_end:
             return False

@@ -25,6 +25,7 @@ Convert the user prompt into a single JSON object matching this schema exactly:
   "sport": "football",
   "market_category": "corners",
   "sub_market": "team_interval_corners",
+  "outcome": null,
   "time_window": "00:00-04:59",
   "selection_target": "lowest_probability_team",
   "line": 0.5,
@@ -50,14 +51,23 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     """Rule-based parser that covers the common corner-interval patterns."""
     text = prompt.lower()
 
-    # time window
-    window = "00:00-04:59"
-    if any(k in text for k in ("first 15", "first15", "0-15", "00:00-14")):
-        window = "00:00-14:59"
-    elif any(k in text for k in ("first 10", "first10", "0-10")):
-        window = "00:00-09:59"
-    elif any(k in text for k in ("first 5", "first5", "0-5", "00:00-04")):
-        window = "00:00-04:59"
+    # Explicit period only. A missing period defaults to full match for
+    # mainstream markets; interval markets require an explicit interval.
+    explicit_period = bool(re.search(r"first\\s*\\d+|\\d{1,2}:\\d{2}\\s*[-–]\\s*\\d{1,2}:\\d{2}|first half|second half", text))
+    window = "full_match"
+    period_m = re.search(r"(\\d{1,2}:\\d{2})\\s*[-–]\\s*(\\d{1,2}:\\d{2})", text)
+    if period_m:
+        window = f"{period_m.group(1)}-{period_m.group(2)}"
+    elif "second half" in text:
+        window = "45:00-89:59"
+    elif "first half" in text:
+        window = "00:00-44:59"
+    else:
+        first_m = re.search(r"first\\s*(\\d+)\\s*(?:minutes?|mins?|m)?", text)
+        if first_m:
+            mins = max(1, min(int(first_m.group(1)), 90))
+            last = mins * 60 - 1
+            window = f"00:00-{last // 60:02d}:{last % 60:02d}"
 
     # line
     line = 0.5
@@ -75,14 +85,50 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     if "over" in text and "under" not in text:
         direction = Direction.OVER
 
-    # target
+    # Market family and requested outcome.
+    category = "corners"
+    outcome = None
+    if "both teams to score" in text or "btts" in text:
+        category = "btts"
+        outcome = "No" if re.search(r"\\bno\\b|not score", text) else "Yes"
+    elif "1x2" in text or "match result" in text or "to win" in text or "winner" in text:
+        category = "result"
+    elif "card" in text:
+        category = "cards"
+    elif "goal" in text:
+        category = "goals"
+    elif "corner" in text:
+        category = "corners"
+
     target = SelectionTarget.LOWEST_PROBABILITY_TEAM
-    if "total" in text:
+    if category == "result":
+        if "draw" in text:
+            target, outcome = SelectionTarget.DRAW, "Draw"
+        elif "away" in text:
+            target, outcome = SelectionTarget.AWAY, "Away"
+        else:
+            target, outcome = SelectionTarget.HOME, "Home"
+    elif category == "btts":
+        target = SelectionTarget.BOTH
+    elif "total" in text or category == "goals":
         target = SelectionTarget.TOTAL
     elif "home" in text and "away" not in text:
         target = SelectionTarget.HOME
     elif "away" in text and "home" not in text:
         target = SelectionTarget.AWAY
+
+    if category == "corners":
+        sub_market = "total_interval_corners" if target == SelectionTarget.TOTAL else "team_interval_corners"
+    elif category == "goals":
+        sub_market = "interval_goals" if explicit_period else "total_goals"
+    elif category == "btts":
+        sub_market = "interval_btts" if explicit_period else "btts"
+    elif category == "result":
+        sub_market = "interval_result" if explicit_period else "match_result"
+    else:
+        sub_market = "interval_cards" if explicit_period else "total_cards"
+    if not explicit_period and category != "corners":
+        window = "full_match"
 
     # probability
     min_prob = 0.75
@@ -110,8 +156,9 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
 
     data = {
         "sport": "football",
-        "market_category": "corners",
-        "sub_market": "team_interval_corners" if target != SelectionTarget.TOTAL else "total_interval_corners",
+        "market_category": category,
+        "sub_market": sub_market,
+        "outcome": outcome,
         "time_window": window,
         "selection_target": target,
         "line": line,

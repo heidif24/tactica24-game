@@ -69,3 +69,10 @@ def test_groq_sources_reads_candidate_urls_and_deduplicates():
     sources = _groq_sources(message, "See https://sports.example/stats", parsed)
     assert len(sources) == 1
     assert sources[0]["url"] == "https://sports.example/stats"
+
+
+
+def test_groq_sources_extracts_urls_from_answer_text():
+    sources = _groq_sources({}, "Evidence: https://league.example/fixtures?id=4.", {"candidates": []})
+    assert sources
+    assert sources[0]["url"] == "https://league.example/fixtures?id=4"

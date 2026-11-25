@@ -81,8 +81,10 @@ Return ONLY valid JSON with this shape:
    "direction": "{rule.direction.value}",
    "outcome": "exact requested outcome label",
    "probability": 0.0,
+   "match_status": "upcoming|live",
    "reasoning": "evidence-based analysis; distinguish facts from inference",
-   "evidence": ["short fact with source context"]
+   "evidence": ["short fact with source context"],
+   "source_urls": ["exact URL copied from Google Search grounding sources"]
   }}
  ],
  "limitations": ["any material data limitations"]
@@ -138,11 +140,27 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
         )
 
     selections: list[Selection] = []
+    allowed_urls = {source["url"] for source in sources}
+    now = datetime.now(timezone.utc)
     for index, item in enumerate(report.get("candidates") or []):
         try:
             home, away = str(item["home_team"]).strip(), str(item["away_team"]).strip()
             kickoff = str(item["kickoff_utc"]).strip()
-            datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+            kickoff_dt = datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+            if kickoff_dt.tzinfo is None:
+                kickoff_dt = kickoff_dt.replace(tzinfo=timezone.utc)
+            match_status = str(item.get("match_status") or "upcoming").lower()
+            if rule.match_status.value == "upcoming" and (match_status != "upcoming" or kickoff_dt <= now):
+                continue
+            if rule.match_status.value == "live" and (match_status != "live" or kickoff_dt > now):
+                continue
+            if rule.match_status.value == "upcoming_or_live" and match_status not in ("upcoming", "live"):
+                continue
+            evidence = item.get("evidence") or []
+            candidate_urls = [str(url) for url in (item.get("source_urls") or [])]
+            matched_sources = [source for source in sources if source["url"] in allowed_urls and source["url"] in candidate_urls]
+            if not evidence or not matched_sources:
+                continue
             probability = float(item["probability"])
             if not home or not away or home.lower() == "unknown" or away.lower() == "unknown":
                 continue
@@ -156,7 +174,6 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
             if float(item.get("line", rule.line)) != float(rule.line):
                 continue
             reasoning = str(item.get("reasoning") or "No detailed reasoning supplied.")
-            evidence = item.get("evidence") or []
             selections.append(Selection(
                 fixture_id=f"web-research-{index + 1}",
                 home_team=home,
@@ -184,7 +201,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 calibration_samples=0,
                 raw_probability=round(probability, 4),
                 model_version="tactica24-gemini-grounded-v1",
-                evidence_sources=sources,
+                evidence_sources=matched_sources,
                 evidence_summary=str(report.get("summary") or ""),
             ))
         except (KeyError, TypeError, ValueError) as exc:

@@ -184,9 +184,11 @@ async def api_pipeline(body: PipelineRequest):
             yield _sse(PipelineProgress(
                 stage=1, stage_name="Parsing Rule",
                 message=(
-                    f"Parsed via {parsed.parser_used}: {parsed.rule.time_window} "
-                    f"{parsed.rule.direction.value} {parsed.rule.line} "
-                    f"@ ≥{parsed.rule.min_probability:.0%}, max {parsed.rule.max_legs} legs"
+                    f"Understood your request: {parsed.rule.market_category} / {parsed.rule.sub_market}; "
+                    f"period {parsed.rule.time_window}; target {parsed.rule.selection_target.value}; "
+                    f"{parsed.rule.direction.value} {parsed.rule.line}; "
+                    f"minimum probability {parsed.rule.min_probability:.0%}; "
+                    f"up to {parsed.rule.max_legs} selections. Parsed via {parsed.parser_used}."
                 ),
                 detail=parsed.rule.model_dump(),
             ))

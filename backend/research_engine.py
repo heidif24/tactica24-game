@@ -1,0 +1,198 @@
+"""Grounded football research using Gemini Google Search.
+
+This module deliberately returns no picks when web evidence is absent or cannot
+be parsed. It does not fall back to demo fixtures or fabricate statistics.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+from datetime import datetime, timezone
+from typing import Any
+
+import httpx
+
+from backend.models import ParsedRule, ScoutResponse, Selection
+
+logger = logging.getLogger(__name__)
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    cleaned = text.strip()
+    cleaned = re.sub(r"^\`\`\`(?:json)?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*\`\`\`$", "", cleaned)
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("Research model did not return a JSON object")
+    value = json.loads(cleaned[start:end + 1])
+    if not isinstance(value, dict):
+        raise ValueError("Research response must be a JSON object")
+    return value
+
+
+def _grounding_sources(candidate: dict[str, Any]) -> list[dict[str, str]]:
+    metadata = candidate.get("groundingMetadata") or {}
+    chunks = metadata.get("groundingChunks") or []
+    sources: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        web = chunk.get("web") or {}
+        uri, title = web.get("uri"), web.get("title") or "Source"
+        if uri and uri.startswith("http") and uri not in seen:
+            seen.add(uri)
+            sources.append({"title": str(title), "url": str(uri)})
+    return sources
+
+
+def _research_prompt(rule: ParsedRule) -> str:
+    return f"""
+You are Tactica24, a cautious football research and prediction analyst.
+Today's UTC date is {datetime.now(timezone.utc).date().isoformat()}.
+Research current and upcoming football fixtures on the public web using Google Search.
+The user's exact request has already been parsed as:
+{rule.model_dump_json()}
+
+Find real fixtures relevant to this request, then analyse only evidence that you
+can support from the web pages you found. Prefer official league/club sources,
+reputable sports data providers, and established sports news/statistics sites.
+Check fixture date, competition, team names, current form and relevant statistics.
+Do not invent fixtures, dates, team statistics, odds, injuries, lineups, or citations.
+Do not claim that a full-match statistic proves a minute-specific market.
+If reliable evidence for the requested market/period is insufficient, return
+an empty candidates array and explain the limitation.
+
+Return ONLY valid JSON with this shape:
+{{
+ "summary": "brief research summary",
+ "candidates": [
+  {{
+   "home_team": "exact home team",
+   "away_team": "exact away team",
+   "kickoff_utc": "ISO-8601 UTC timestamp with Z",
+   "league": "competition",
+   "selection_side": "home|away|total|both|draw|1x|x2|12",
+   "team_name": "team or market label",
+   "market_category": "{rule.market_category}",
+   "sub_market": "{rule.sub_market}",
+   "time_window": "{rule.time_window}",
+   "line": {rule.line},
+   "direction": "{rule.direction.value}",
+   "outcome": "exact requested outcome label",
+   "probability": 0.0,
+   "reasoning": "evidence-based analysis; distinguish facts from inference",
+   "evidence": ["short fact with source context"]
+  }}
+ ],
+ "limitations": ["any material data limitations"]
+}}
+
+Probability must be an honest model estimate from 0 to 1, not a bookmaker price
+and not a guarantee. Do not include candidates below {rule.min_probability}.
+Return no more than {rule.max_legs} candidates. Preserve the requested market
+and time interval exactly. Do not substitute another market or period.
+"""
+
+
+async def _gemini_grounded_research(rule: ParsedRule) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is missing. Add it to the Vercel server environment.")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": _research_prompt(rule)}]}],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+    }
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        response = await client.post(url, params={"key": key}, json=payload)
+        if response.status_code >= 400:
+            detail = response.text[:700]
+            raise RuntimeError(f"Gemini web research failed ({response.status_code}): {detail}")
+        data = response.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise RuntimeError("Gemini returned no research candidate")
+    candidate = candidates[0]
+    parts = ((candidate.get("content") or {}).get("parts") or [])
+    text = "\n".join(p.get("text", "") for p in parts if p.get("text"))
+    if not text:
+        raise RuntimeError("Gemini returned no research text")
+    parsed = _extract_json(text)
+    sources = _grounding_sources(candidate)
+    return parsed, sources
+
+
+async def research_matches(rule: ParsedRule) -> ScoutResponse:
+    """Search the live web, analyse sourced fixtures, and produce auditable picks."""
+    report, sources = await _gemini_grounded_research(rule)
+    if not sources:
+        logger.warning("Gemini response had no Google Search grounding sources")
+        return ScoutResponse(
+            selections=[], scanned_fixtures=0, provider="gemini_google_search",
+            research_summary="No verifiable web sources were returned; no selections generated.",
+            evidence_sources=[],
+            limitations=["Google Search grounding returned no source URLs."],
+        )
+
+    selections: list[Selection] = []
+    for index, item in enumerate(report.get("candidates") or []):
+        try:
+            home, away = str(item["home_team"]).strip(), str(item["away_team"]).strip()
+            kickoff = str(item["kickoff_utc"]).strip()
+            datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+            probability = float(item["probability"])
+            if not home or not away or home.lower() == "unknown" or away.lower() == "unknown":
+                continue
+            if not 0 < probability <= 1 or probability < rule.min_probability:
+                continue
+            # Preserve the exact requested market and interval; reject model drift.
+            if str(item.get("market_category", rule.market_category)).lower() != rule.market_category.lower():
+                continue
+            if str(item.get("time_window", rule.time_window)) != rule.time_window:
+                continue
+            if float(item.get("line", rule.line)) != float(rule.line):
+                continue
+            reasoning = str(item.get("reasoning") or "No detailed reasoning supplied.")
+            evidence = item.get("evidence") or []
+            selections.append(Selection(
+                fixture_id=f"web-research-{index + 1}",
+                home_team=home,
+                away_team=away,
+                kickoff_utc=kickoff,
+                league=str(item.get("league") or "Competition not stated"),
+                selection_side=str(item.get("selection_side") or rule.selection_target.value),
+                team_name=str(item.get("team_name") or f"{home} vs {away}"),
+                time_window=rule.time_window,
+                line=rule.line,
+                direction=rule.direction.value,
+                lambda_=0.0,
+                probability=round(probability, 4),
+                fair_odds=round(1 / probability, 3),
+                reasoning=reasoning + (" Evidence: " + "; ".join(map(str, evidence[:5])) if evidence else ""),
+                market_category=rule.market_category,
+                sub_market=rule.sub_market,
+                bookmaker_outcome=str(item.get("outcome") or rule.outcome or rule.direction.value),
+                calibration_status="uncalibrated",
+                calibration_samples=0,
+                raw_probability=round(probability, 4),
+                model_version="tactica24-gemini-grounded-v1",
+                evidence_sources=sources,
+                evidence_summary=str(report.get("summary") or ""),
+            ))
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning("Rejecting malformed web-research candidate: %s", exc)
+            continue
+
+    selections.sort(key=lambda s: s.probability, reverse=True)
+    limitations = [str(x) for x in (report.get("limitations") or [])]
+    return ScoutResponse(
+        selections=selections[:rule.max_legs],
+        scanned_fixtures=len(selections),
+        provider="gemini_google_search",
+        research_summary=str(report.get("summary") or "Grounded web research completed."),
+        evidence_sources=sources,
+        limitations=limitations,
+    )

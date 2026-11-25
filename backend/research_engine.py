@@ -11,6 +11,7 @@ import os
 import re
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -49,7 +50,7 @@ def _grounding_sources(candidate: dict[str, Any]) -> list[dict[str, str]]:
 def _research_prompt(rule: ParsedRule) -> str:
     return f"""
 You are Tactica24, a cautious football research and prediction analyst.
-Today's UTC date is {datetime.now(timezone.utc).date().isoformat()}.
+Today's date in the user's Nigeria timezone (Africa/Lagos) is {datetime.now(ZoneInfo('Africa/Lagos')).date().isoformat()}. If date_scope is 'today', include ONLY fixtures kicking off on that local calendar date.
 Research current and upcoming football fixtures on the public web using Google Search.
 The user's exact request has already been parsed as:
 {rule.model_dump_json()}
@@ -251,6 +252,8 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
             if kickoff_dt.tzinfo is None:
                 kickoff_dt = kickoff_dt.replace(tzinfo=timezone.utc)
             match_status = str(item.get("match_status") or "upcoming").lower()
+            if rule.date_scope == "today" and kickoff_dt.astimezone(ZoneInfo("Africa/Lagos")).date() != datetime.now(ZoneInfo("Africa/Lagos")).date():
+                continue
             if rule.match_status.value == "upcoming" and (match_status != "upcoming" or kickoff_dt <= now):
                 continue
             if rule.match_status.value == "live" and (match_status != "live" or kickoff_dt > now):
@@ -298,7 +301,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 market_category=rule.market_category,
                 sub_market=rule.sub_market,
                 bookmaker_outcome=(
-                    rule.direction.value if rule.market_category in ("corners", "goals")
+                    rule.direction.value if rule.market_category in ("corners", "goals", "cards")
                     else (rule.outcome or str(item.get("outcome") or "")).lower()
                     if rule.market_category in ("btts", "double_chance")
                     else candidate_side

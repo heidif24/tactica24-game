@@ -211,7 +211,7 @@
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mono text-terminal-muted">
             <div><span class="text-terminal-text">${escapeHtml(l.team_name)}</span><br/>${escapeHtml(l.direction)} ${escapeHtml(l.line)} · ${escapeHtml(l.time_window)}</div>
-            <div>P = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>λ = ${escapeHtml(l.lambda ?? l.lambda_)}</div>
+            <div>AI est. = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>uncalibrated AI estimate</div>
             <div>Fair <span class="text-terminal-text">${l.fair_odds}</span><br/>Bookmaker ${escapeHtml(l.found_odds ?? '—')}</div>
             <div class="col-span-2 sm:col-span-1">${escapeHtml(l.league)}<br/><span class="text-[10px]">${escapeHtml(l.calibration_status || 'uncalibrated')} · n=${escapeHtml(l.calibration_samples || 0)}<br/>${escapeHtml(l.market_note || '')}</span></div>
           </div>

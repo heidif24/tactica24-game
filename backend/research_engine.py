@@ -149,6 +149,19 @@ def _groq_sources(message: dict[str, Any], raw: str, parsed: dict[str, Any]) -> 
             citation.get("title"))
     for citation in message.get("citations") or []:
         add(citation)
+
+    # Groq browser-search results can be nested under executed_tools rather
+    # than exposed as Chat Completions URL-citation annotations.
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            add(value)
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(message.get("executed_tools") or [])
     # Some Groq responses render cited URLs directly in the answer.
     for url in re.findall(r"https?://[^\s<>\"']+", raw):
         add(url.rstrip(".,;:"))
@@ -176,7 +189,6 @@ period, return candidates=[] and explain why in limitations.
         "max_completion_tokens": 6000,
         "tool_choice": "required",
         "tools": [{"type": "browser_search"}],
-        "citation_options": "enabled",
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(

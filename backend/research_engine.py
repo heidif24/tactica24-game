@@ -192,7 +192,11 @@ period, return candidates=[] and explain why in limitations.
     if not raw:
         raise RuntimeError("Groq browser search returned no research text")
     parsed = _extract_json(raw)
-    return parsed, _groq_sources(message, raw, parsed)
+    source_metadata = dict(message)
+    for field in ("annotations", "citations", "executed_tools"):
+        if field not in source_metadata and data.get(field):
+            source_metadata[field] = data[field]
+    return parsed, _groq_sources(source_metadata, raw, parsed)
 
 async def research_matches(rule: ParsedRule) -> ScoutResponse:
     """Search the live web, analyse sourced fixtures, and produce auditable picks."""

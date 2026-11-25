@@ -33,12 +33,15 @@ Convert the user's natural-language request into one JSON object matching this s
   "direction": "under",
   "min_probability": 0.75,
   "max_legs": 1,
-  "match_status": "upcoming",\n  "date_scope": "today|any"
+  "match_status": "upcoming",
+  "date_scope": "today|any"
 }
 Allowed market_category values: corners, goals, btts, result, double_chance, cards.
 Allowed selection_target values: lowest_probability_team, highest_probability_team, home, away, both, draw, total. Team 1 means the home team; Team 2 means the away team. If the user asks which team is more likely to record an event, use highest_probability_team; if they ask which team is least likely, use lowest_probability_team.
 Use an exact MM:SS-MM:SS interval only when the user requests one; otherwise use full_match.
-If the user says today, set date_scope to today; otherwise any.\nFor cards, an unqualified cards market is total match cards, not an individual team market.\nFor BTTS, set outcome to Yes or No. For 1X2, set outcome to Home, Draw, or Away. For double chance, set outcome to 1X, X2, or 12.
+If the user says today, set date_scope to today; otherwise any.
+For cards, an unqualified cards market is total match cards, not an individual team market.
+For BTTS, set outcome to Yes or No. For 1X2, set outcome to Home, Draw, or Away. For double chance, set outcome to 1X, X2, or 12.
 Never invent fixtures, bookmaker markets, odds, or statistics. Do not convert a requested interval into a full-match market.
 If the requested market/period cannot be supported by the data engine, preserve the request exactly; the application will return no pick.
 Only output valid JSON, without markdown or commentary."""

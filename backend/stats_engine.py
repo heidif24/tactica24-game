@@ -8,7 +8,7 @@ import os
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 
 from backend.models import (
@@ -173,8 +173,8 @@ def get_provider() -> StatsProvider:
         return MockStatsProvider()
     raise RuntimeError(
         "The legacy fixture-statistics engine is disabled. "
-        "Use the Gemini/Groq grounded web-research pipeline; no API-Football, "
-        "FootyStats or demonstration statistics are used for live analysis."
+        "Use the Gemini/Groq grounded web-research pipeline; legacy providers "
+        "and demonstration statistics are not used for live analysis."
     )
 
 

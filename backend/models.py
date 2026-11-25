@@ -15,6 +15,7 @@ class Direction(str, Enum):
 
 class SelectionTarget(str, Enum):
     LOWEST_PROBABILITY_TEAM = "lowest_probability_team"
+    HIGHEST_PROBABILITY_TEAM = "highest_probability_team"
     HOME = "home"
     AWAY = "away"
     BOTH = "both"

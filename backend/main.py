@@ -58,10 +58,10 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 @app.get("/api/health")
 async def health():
-    stats_provider = "gemini_google_search"
+    stats_provider = "auto_gemini_groq_web_search"
     slip_builder = os.getenv("SLIP_BUILDER", "manage_bet_codes").lower()
     demo_mode = slip_builder == "mock"
-    stats_configured = bool(os.getenv("GEMINI_API_KEY"))
+    stats_configured = bool(os.getenv("GEMINI_API_KEY")) or bool(os.getenv("GROQ_API_KEY"))
     builder_configured = (
         slip_builder == "mock"
         or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
@@ -75,7 +75,7 @@ async def health():
     llm_configured = bool(os.getenv("GEMINI_API_KEY")) or bool(os.getenv("GROQ_API_KEY"))
     setup_requirements = []
     if not stats_configured:
-        setup_requirements.append("Gemini API key for grounded web research")
+        setup_requirements.append("Gemini or Groq API key for live web research")
     if not builder_configured:
         setup_requirements.append("Manage Bet Codes API key")
     if not llm_configured:
@@ -100,6 +100,7 @@ async def health():
         "stats_configured": stats_configured,
         "builder_configured": builder_configured,
         "stats_provider": stats_provider,
+        "research_providers_configured": [name for name, present in (("gemini", bool(os.getenv("GEMINI_API_KEY"))), ("groq", bool(os.getenv("GROQ_API_KEY")))) if present],
         "slip_builder": slip_builder,
         "llm_provider": llm_provider,
     }

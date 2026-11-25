@@ -26,3 +26,23 @@ def test_grounding_sources_deduplicates_urls():
 
 def test_grounding_sources_empty_when_metadata_missing():
     assert _grounding_sources({}) == []
+
+
+def test_legacy_stats_provider_is_disabled_by_default(monkeypatch):
+    import pytest
+    from backend.stats_engine import get_provider
+    monkeypatch.delenv("STATS_PROVIDER", raising=False)
+    with pytest.raises(RuntimeError, match="legacy fixture-statistics engine is disabled"):
+        get_provider()
+
+def test_api_football_provider_cannot_be_selected(monkeypatch):
+    import pytest
+    from backend.stats_engine import get_provider
+    monkeypatch.setenv("STATS_PROVIDER", "api_football")
+    with pytest.raises(RuntimeError, match="legacy fixture-statistics engine is disabled"):
+        get_provider()
+
+def test_mock_stats_provider_requires_explicit_opt_in(monkeypatch):
+    from backend.stats_engine import MockStatsProvider, get_provider
+    monkeypatch.setenv("STATS_PROVIDER", "mock")
+    assert isinstance(get_provider(), MockStatsProvider)

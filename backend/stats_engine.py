@@ -8,9 +8,8 @@ import os
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
-import httpx
 
 from backend.models import (
     Direction,
@@ -162,296 +161,21 @@ def _fx(
     )
 
 
-class ApiFootballProvider(StatsProvider):
-    """
-    Live API-Football / API-Sports v3 provider.
-
-    Env:
-      API_FOOTBALL_KEY   — required
-      API_FOOTBALL_BASE  — optional, default https://v3.football.api-sports.io
-                           (use https://api-football-v1.p.rapidapi.com/v3 for RapidAPI)
-      API_FOOTBALL_HOST  — optional RapidAPI host header
-    """
-
-    name = "api_football"
-
-    def __init__(self) -> None:
-        self.key = os.getenv("API_FOOTBALL_KEY", "")
-        if not self.key:
-            raise RuntimeError("API_FOOTBALL_KEY is required for api_football provider")
-        self.base = os.getenv("API_FOOTBALL_BASE", "https://v3.football.api-sports.io").rstrip("/")
-        self.rapid_host = os.getenv("API_FOOTBALL_HOST", "")
-        self._stat_cache: dict[tuple[int, int, int], dict[str, float]] = {}
-
-    def _headers(self) -> dict[str, str]:
-        h = {"x-apisports-key": self.key}
-        if self.rapid_host:
-            h = {
-                "x-rapidapi-key": self.key,
-                "x-rapidapi-host": self.rapid_host,
-            }
-        return h
-
-    async def _get(self, path: str, params: dict[str, Any]) -> list[dict]:
-        url = f"{self.base}{path}"
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(url, params=params, headers=self._headers())
-            resp.raise_for_status()
-            body = resp.json()
-            errors = body.get("errors")
-            if errors:
-                logger.warning("API-Football errors: %s", errors)
-            return body.get("response") or []
-
-    async def _team_corner_rates(self, team_id: int, season: int, league_id: int) -> dict[str, float]:
-        cache_key = (team_id, season, league_id)
-        if cache_key in self._stat_cache:
-            return self._stat_cache[cache_key]
-
-        rows = await self._get("/teams/statistics", {
-            "team": team_id,
-            "season": season,
-            "league": league_id,
-        })
-        if not rows:
-            raise RuntimeError(
-                f"API-Football returned no season statistics for team {team_id} in league {league_id}"
-            )
-        stats = rows[0] if isinstance(rows, list) else rows
-        fixtures_played = ((stats.get("fixtures") or {}).get("played") or {}).get("total") or 0
-        corner_stats = stats.get("corners") or {}
-        corners_for = (((corner_stats.get("for") or {}).get("total") or {}).get("total")
-                       or ((corner_stats.get("total") or {}).get("total")))
-        corners_against = ((corner_stats.get("against") or {}).get("total") or {}).get("total")
-        if corners_for is None or not fixtures_played:
-            raise RuntimeError(
-                f"API-Football did not supply usable corner totals for team {team_id}; "
-                "the app will not substitute assumed team averages"
-            )
-        goals = stats.get("goals") or {}
-        goals_for = ((goals.get("for") or {}).get("total") or {}).get("total")
-        goals_against = ((goals.get("against") or {}).get("total") or {}).get("total")
-        rates = {
-            "c90_for": round(float(corners_for) / float(fixtures_played), 2),
-            "c90_against": round(float(corners_against) / float(fixtures_played), 2) if corners_against is not None else None,
-            "first15_share": DEFAULT_FIRST15_SHARE,
-            "g90_for": round(float(goals_for) / float(fixtures_played), 3) if goals_for is not None else None,
-            "g90_against": round(float(goals_against) / float(fixtures_played), 3) if goals_against is not None else None,
-        }
-        self._stat_cache[cache_key] = rates
-        return rates
-
-    async def _enrich_from_fixture_stats(
-        self, fixture_id: int, home_id: int, away_id: int
-    ) -> tuple[dict[str, float], dict[str, float]]:
-        """Try fixture-level statistics for corner counts when available."""
-        home = {"c90_for": 4.8, "c90_against": 4.8, "first15_share": DEFAULT_FIRST15_SHARE}
-        away = {"c90_for": 4.8, "c90_against": 4.8, "first15_share": DEFAULT_FIRST15_SHARE}
-        try:
-            rows = await self._get("/fixtures/statistics", {"fixture": fixture_id})
-            for side in rows:
-                tid = (side.get("team") or {}).get("id")
-                stats_list = side.get("statistics") or []
-                corners = None
-                for s in stats_list:
-                    if (s.get("type") or "").lower() == "corner kicks":
-                        corners = s.get("value")
-                        break
-                if corners is not None and tid == home_id:
-                    # single-match observation — blend lightly toward season default
-                    home["c90_for"] = round(0.7 * home["c90_for"] + 0.3 * float(corners), 2)
-                if corners is not None and tid == away_id:
-                    away["c90_for"] = round(0.7 * away["c90_for"] + 0.3 * float(corners), 2)
-        except Exception as exc:
-            logger.debug("fixture stats %s: %s", fixture_id, exc)
-        return home, away
-
-    async def fetch_fixtures(self, status: MatchStatus) -> list[Fixture]:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        params: dict[str, Any] = {"date": today}
-
-        # status filters used by API-Football
-        if status == MatchStatus.LIVE:
-            params["live"] = "all"
-            params.pop("date", None)
-        elif status == MatchStatus.UPCOMING:
-            params["status"] = "NS"
-        # upcoming_or_live: fetch both
-        try:
-            if status == MatchStatus.UPCOMING_OR_LIVE:
-                live_rows = await self._get("/fixtures", {"live": "all"})
-                ns_rows = await self._get("/fixtures", {"date": today, "status": "NS"})
-                rows = (live_rows or []) + (ns_rows or [])
-            else:
-                rows = await self._get("/fixtures", params)
-        except Exception as exc:
-            logger.exception("API-Football fixture fetch failed")
-            raise RuntimeError(f"Live API-Football fixture fetch failed: {exc}") from exc
-
-        fixtures: list[Fixture] = []
-        seen: set[str] = set()
-
-        for row in rows[:40]:  # hard cap for rate limits
-            fi = row.get("fixture") or {}
-            teams = row.get("teams") or {}
-            league = row.get("league") or {}
-            fid = str(fi.get("id") or "")
-            if not fid or fid in seen:
-                continue
-            seen.add(fid)
-
-            home = teams.get("home") or {}
-            away = teams.get("away") or {}
-            home_name = home.get("name") or "Home"
-            away_name = away.get("name") or "Away"
-            home_id = home.get("id") or 0
-            away_id = away.get("id") or 0
-
-            st = (fi.get("status") or {}).get("short") or "NS"
-            match_status = MatchStatus.LIVE if st in ("1H", "2H", "HT", "ET", "BT", "P", "LIVE") else MatchStatus.UPCOMING
-
-            kickoff = fi.get("date") or datetime.now(timezone.utc).isoformat()
-
-            # Season rates — best-effort; defaults are fine for Poisson ranking
-            season = league.get("season") or datetime.now(timezone.utc).year
-            league_id = int(league.get("id") or 0)
-            if not league_id:
-                raise RuntimeError("API-Football fixture is missing its league identifier")
-            h_stats = await self._team_corner_rates(int(home_id), int(season), league_id)
-            a_stats = await self._team_corner_rates(int(away_id), int(season), league_id)
-
-            # Preserve each team's own against-rate. The previous cross-fill
-            # accidentally substituted the opponent's attacking rate.
-            h_c90_against = h_stats["c90_against"]
-            a_c90_against = a_stats["c90_against"]
-
-            fixtures.append(Fixture(
-                fixture_id=fid,
-                home_team=home_name,
-                away_team=away_name,
-                kickoff_utc=kickoff,
-                league=league.get("name") or "Unknown",
-                status=match_status,
-                home_stats=TeamCornerStats(
-                    team_id=str(home_id), team_name=home_name,
-                    c90_for=h_stats["c90_for"], c90_against=h_c90_against,
-                    first15_share=h_stats.get("first15_share", DEFAULT_FIRST15_SHARE),
-                    g90_for=h_stats.get("g90_for"), g90_against=h_stats.get("g90_against"),
-                ),
-                away_stats=TeamCornerStats(
-                    team_id=str(away_id), team_name=away_name,
-                    c90_for=a_stats["c90_for"], c90_against=a_c90_against,
-                    first15_share=a_stats.get("first15_share", DEFAULT_FIRST15_SHARE),
-                    g90_for=a_stats.get("g90_for"), g90_against=a_stats.get("g90_against"),
-                ),
-            ))
-
-        if not fixtures:
-            raise RuntimeError("API-Football returned no fixtures; refusing to substitute demonstration fixtures")
-
-        logger.info("API-Football: %d fixtures loaded", len(fixtures))
-        return fixtures
-
-
-class FootyStatsProvider(StatsProvider):
-    """
-    FootyStats.com API adapter.
-    Docs: https://footystats.org/api
-    Env: FOOTYSTATS_KEY
-    """
-
-    name = "footystats"
-
-    def __init__(self) -> None:
-        self.key = os.getenv("FOOTYSTATS_KEY", "")
-        if not self.key:
-            raise RuntimeError("FOOTYSTATS_KEY is required for footystats provider")
-        self.base = "https://api.football-data-api.com"
-
-    async def fetch_fixtures(self, status: MatchStatus) -> list[Fixture]:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.get(
-                    f"{self.base}/todays-matches",
-                    params={"key": self.key, "date": today},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            rows = data.get("data") or []
-        except Exception as exc:
-            logger.exception("FootyStats fetch failed")
-            raise RuntimeError(f"Live FootyStats fetch failed: {exc}") from exc
-
-        fixtures: list[Fixture] = []
-        for row in rows[:40]:
-            home_name = row.get("home_name") or "Home"
-            away_name = row.get("away_name") or "Away"
-            fid = str(row.get("id") or f"{home_name}-{away_name}")
-
-            # FootyStats often exposes pre-match corner averages
-            required = ("team_a_corners_per_match", "team_b_corners_per_match")
-            if any(row.get(key) is None for key in required):
-                logger.warning("Skipping FootyStats fixture %s: corner averages missing", fid)
-                continue
-            h_for = float(row["team_a_corners_per_match"])
-            a_for = float(row["team_b_corners_per_match"])
-            h_against_raw = row.get("team_a_corners_against_per_match")
-            a_against_raw = row.get("team_b_corners_against_per_match")
-            h_against = float(h_against_raw) if h_against_raw is not None else None
-            a_against = float(a_against_raw) if a_against_raw is not None else None
-            h_goals = row.get("team_a_goals_per_match")
-            a_goals = row.get("team_b_goals_per_match")
-            h_goals_against = row.get("team_a_goals_against_per_match")
-            a_goals_against = row.get("team_b_goals_against_per_match")
-
-            st_raw = (row.get("status") or "incomplete").lower()
-            match_status = MatchStatus.LIVE if st_raw in ("live", "incomplete") and row.get("time") not in (None, "0") else MatchStatus.UPCOMING
-
-            if status == MatchStatus.LIVE and match_status != MatchStatus.LIVE:
-                continue
-            if status == MatchStatus.UPCOMING and match_status != MatchStatus.UPCOMING:
-                continue
-
-            kickoff = row.get("date_unix")
-            if kickoff:
-                kickoff_iso = datetime.fromtimestamp(int(kickoff), tz=timezone.utc).isoformat()
-            else:
-                kickoff_iso = datetime.now(timezone.utc).isoformat()
-
-            fixtures.append(Fixture(
-                fixture_id=fid,
-                home_team=home_name,
-                away_team=away_name,
-                kickoff_utc=kickoff_iso,
-                league=row.get("competition") or row.get("league_name") or "Unknown",
-                status=match_status,
-                home_stats=TeamCornerStats(
-                    team_id=f"{fid}_h", team_name=home_name,
-                    c90_for=h_for, c90_against=h_against,
-                    g90_for=float(h_goals) if h_goals is not None else None,
-                    g90_against=float(h_goals_against) if h_goals_against is not None else None,
-                ),
-                away_stats=TeamCornerStats(
-                    team_id=f"{fid}_a", team_name=away_name,
-                    c90_for=a_for, c90_against=a_against,
-                    g90_for=float(a_goals) if a_goals is not None else None,
-                    g90_against=float(a_goals_against) if a_goals_against is not None else None,
-                ),
-            ))
-
-        if not fixtures:
-            raise RuntimeError("FootyStats returned no matching fixtures; refusing to substitute demonstration fixtures")
-        return fixtures
-
-
 def get_provider() -> StatsProvider:
-    name = os.getenv("STATS_PROVIDER", "mock").lower()
-    if name == "api_football":
-        return ApiFootballProvider()
-    if name == "footystats":
-        return FootyStatsProvider()
-    return MockStatsProvider()
+    """Legacy local stats engine is disabled for production research.
+
+    Only explicit mock mode is permitted for isolated development/tests.
+    Live analysis must use backend.research_engine, which requires grounded
+    Gemini/Groq web evidence and never substitutes mock fixtures.
+    """
+    name = os.getenv("STATS_PROVIDER", "disabled").lower()
+    if name == "mock":
+        return MockStatsProvider()
+    raise RuntimeError(
+        "The legacy fixture-statistics engine is disabled. "
+        "Use the Gemini/Groq grounded web-research pipeline; legacy providers "
+        "and demonstration statistics are not used for live analysis."
+    )
 
 
 # ── Scouting engine ─────────────────────────────────────────────────────────
@@ -551,6 +275,11 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
         else:
             # Cards and other categories require observed event-level data.
             continue
+
+        if rule.selection_target in (SelectionTarget.HIGHEST_PROBABILITY_TEAM, SelectionTarget.LOWEST_PROBABILITY_TEAM) and computed:
+            # Probability is for the requested market outcome (Over or Under),
+            # so choose the side with the highest probability of that outcome.
+            computed = [max(computed, key=lambda item: item[3])]
 
         for side, team_name, lam, raw_prob, outcome in computed:
             if raw_prob < rule.min_probability:

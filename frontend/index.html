@@ -58,7 +58,7 @@
 
     <section class="bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-4">
       <label class="block text-sm font-medium text-terminal-muted">Tell Tactica24 what you want to analyse</label>
-      <p class="text-xs text-terminal-warn">Analysis coverage: corners (including intervals where exact markets exist), full-match goals, BTTS and 1X2 where statistics support them. Minute-level goals/cards are never inferred from full-match averages. Verified historical calibration is required before a live code can be issued.</p>
+      <p class="text-xs text-terminal-warn">Analysis coverage depends on current web evidence and exact bookmaker market availability. Minute-specific markets are not inferred from full-match averages. AI probabilities are estimates, not statistically calibrated forecasts or guarantees.</p>
       <textarea id="prompt" rows="3"
         class="w-full bg-terminal-bg border border-terminal-border rounded-lg px-4 py-3 text-sm mono focus:outline-none focus:border-terminal-accent resize-none"
         placeholder="Example: Find upcoming matches where the away team is least likely to get a corner in the first 5 minutes. Use at most 2 selections and return a code only if the exact market is available."></textarea>
@@ -107,7 +107,7 @@
     <section id="progressSection" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
       <div class="flex flex-wrap gap-3 mb-4" id="steps">
         <div data-step="1" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">1 · Parse</div>
-        <div data-step="2" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">2 · Scout</div>
+        <div data-step="2" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">2 · Web research</div>
         <div data-step="3" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">3 · Match</div>
         <div data-step="4" class="step step-idle flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs mono">4 · Code</div>
       </div>
@@ -134,6 +134,12 @@
       </div>
     </section>
 
+    <section id="researchResults" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5 space-y-3">
+      <h2 class="text-sm font-semibold uppercase tracking-wider">Research findings</h2>
+      <div id="legsTable" class="space-y-3 text-sm text-terminal-muted">No candidates analysed yet.</div>
+      <div class="border-t border-terminal-border pt-3"><h3 class="text-xs font-semibold uppercase tracking-wider text-terminal-muted mb-2">Web sources</h3><ul id="sourceList" class="space-y-1 text-xs text-terminal-muted"></ul></div>
+    </section>
+
     <footer class="text-center text-xs text-terminal-muted pt-4 border-t border-terminal-border">
       Tactica24 · Educational use only · Automating bookmakers may violate ToS
     </footer>
@@ -141,7 +147,7 @@
 
   <script>
     // Same-origin when served by FastAPI; override via localStorage if needed
-    const API = localStorage.getItem('tactica24_api') || window.location.origin;
+    const API = window.location.origin;
     const conversationHistory = [];
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {
@@ -205,7 +211,7 @@
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mono text-terminal-muted">
             <div><span class="text-terminal-text">${escapeHtml(l.team_name)}</span><br/>${escapeHtml(l.direction)} ${escapeHtml(l.line)} · ${escapeHtml(l.time_window)}</div>
-            <div>P = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>λ = ${escapeHtml(l.lambda ?? l.lambda_)}</div>
+            <div>AI est. = <span class="text-terminal-accent">${(l.probability * 100).toFixed(1)}%</span><br/>uncalibrated AI estimate</div>
             <div>Fair <span class="text-terminal-text">${l.fair_odds}</span><br/>Bookmaker ${escapeHtml(l.found_odds ?? '—')}</div>
             <div class="col-span-2 sm:col-span-1">${escapeHtml(l.league)}<br/><span class="text-[10px]">${escapeHtml(l.calibration_status || 'uncalibrated')} · n=${escapeHtml(l.calibration_samples || 0)}<br/>${escapeHtml(l.market_note || '')}</span></div>
           </div>
@@ -305,17 +311,35 @@
             }
             setStep(event.stage, event.done ? 'done' : 'active');
             log(event.stage_name);
+            if (event.stage === 2 && event.detail) {
+              renderLegs(event.detail.selections || []);
+              const list = document.getElementById('sourceList');
+              list.replaceChildren();
+              (event.detail.sources || []).forEach(source => {
+                if (!source.url || !source.url.startsWith('http')) return;
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = source.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                link.className = 'underline hover:text-terminal-accent';
+                link.textContent = source.title || source.url;
+                li.appendChild(link); list.appendChild(li);
+              });
+              document.getElementById('researchResults').classList.remove('hidden');
+            }
             if (event.done) {
               document.getElementById('results').classList.remove('hidden');
               if (event.detail?.booking_code) {
                 showCode(event.detail.booking_code, event.detail.screenshot_b64);
               } else {
                 const logs = (event.detail?.logs || []).join(' ').toLowerCase();
-                const reason = logs.includes('calibration')
-                  ? 'Historical out-of-sample probability calibration is not ready for this market and period.'
-                  : logs.includes('market') || logs.includes('resolve')
+                const calibrationBlocked = logs.includes('booking blocked: probability calibration is required');
+                const legNote = (event.detail?.legs || []).map(l => l.market_note).find(Boolean);
+                const reason = calibrationBlocked
+                  ? 'Booking was blocked by the historical calibration requirement.'
+                  : legNote || (logs.includes('market') || logs.includes('resolve')
                     ? 'The exact requested market could not be matched and verified at the selected bookmaker. No substitute market was used.'
-                    : 'The booking provider did not verify a complete code. No code was issued.';
+                    : 'The booking provider did not verify a complete code. No code was issued.');
+                if (event.detail?.legs?.length) renderLegs(event.detail.legs);
                 document.getElementById('noCodeReason').textContent = reason;
                 document.getElementById('noCodeCard').classList.remove('hidden');
               }

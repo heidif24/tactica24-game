@@ -7,6 +7,7 @@ import logging
 import os
 import re
 from typing import Optional
+import httpx
 
 from backend.models import (
     Direction,
@@ -32,11 +33,14 @@ Convert the user's natural-language request into one JSON object matching this s
   "direction": "under",
   "min_probability": 0.75,
   "max_legs": 1,
-  "match_status": "upcoming"
+  "match_status": "upcoming",
+  "date_scope": "today|any"
 }
 Allowed market_category values: corners, goals, btts, result, double_chance, cards.
-Allowed selection_target values: lowest_probability_team, home, away, both, draw, total.
+Allowed selection_target values: lowest_probability_team, highest_probability_team, home, away, both, draw, total. Team 1 means the home team; Team 2 means the away team. If the user asks which team is more likely to record an event, use highest_probability_team; if they ask which team is least likely, use lowest_probability_team.
 Use an exact MM:SS-MM:SS interval only when the user requests one; otherwise use full_match.
+If the user says today, set date_scope to today; otherwise any.
+For cards, an unqualified cards market is total match cards, not an individual team market.
 For BTTS, set outcome to Yes or No. For 1X2, set outcome to Home, Draw, or Away. For double chance, set outcome to 1X, X2, or 12.
 Never invent fixtures, bookmaker markets, odds, or statistics. Do not convert a requested interval into a full-match market.
 If the requested market/period cannot be supported by the data engine, preserve the request exactly; the application will return no pick.
@@ -90,6 +94,8 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     direction = Direction.UNDER
     if "over" in text and "under" not in text:
         direction = Direction.OVER
+    elif re.search(r"\bmost likely\b|\bmore likely\b|\bhighest probability\b|\bmost probable\b", text):
+        direction = Direction.OVER
 
     # Market family and requested outcome.
     category = "corners"
@@ -109,7 +115,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     elif "corner" in text:
         category = "corners"
 
-    target = SelectionTarget.LOWEST_PROBABILITY_TEAM
+    target = SelectionTarget.TOTAL if category == "cards" else SelectionTarget.LOWEST_PROBABILITY_TEAM
     if category == "result":
         if "draw" in text:
             target, outcome = SelectionTarget.DRAW, "Draw"
@@ -121,12 +127,14 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         target = SelectionTarget.BOTH
     elif category == "double_chance":
         target = SelectionTarget.BOTH
-    elif "total" in text or category == "goals":
+    elif "total" in text or category in ("goals", "cards"):
         target = SelectionTarget.TOTAL
-    elif "home" in text and "away" not in text:
+    elif re.search(r"\bteam\s*1\b|\bteam\s*one\b", text) or ("home" in text and "away" not in text):
         target = SelectionTarget.HOME
-    elif "away" in text and "home" not in text:
+    elif re.search(r"\bteam\s*2\b|\bteam\s*two\b", text) or ("away" in text and "home" not in text):
         target = SelectionTarget.AWAY
+    elif re.search(r"\bmost likely\b|\bmore likely\b|\bhighest probability\b|\bmost probable\b", text):
+        target = SelectionTarget.HIGHEST_PROBABILITY_TEAM
 
     if category == "corners":
         sub_market = "total_interval_corners" if target == SelectionTarget.TOTAL else "team_interval_corners"
@@ -139,7 +147,10 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     elif category == "result":
         sub_market = "interval_result" if explicit_period else "match_result"
     else:
-        sub_market = "interval_cards" if explicit_period else "total_cards"
+        if target == SelectionTarget.TOTAL:
+            sub_market = "total_interval_cards" if explicit_period else "total_cards"
+        else:
+            sub_market = "team_interval_cards" if explicit_period else "team_cards"
     if not explicit_period and category != "corners":
         window = "full_match"
 
@@ -179,6 +190,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         "min_probability": min_prob,
         "max_legs": max_legs,
         "match_status": status,
+        "date_scope": "today" if re.search(r"\btoday\b", text) else "any",
     }
     if overrides:
         data.update({k: v for k, v in overrides.items() if v is not None})
@@ -187,11 +199,48 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
 
 async def llm_parse(prompt: str) -> Optional[ParsedRule]:
     """Try OpenAI / Anthropic structured parse. Returns None on any failure."""
-    provider = os.getenv("LLM_PROVIDER", "none").lower()
+    provider = os.getenv("LLM_PROVIDER", "auto").lower()
+    if provider in ("auto", ""):
+        provider = "gemini"
     if provider == "none":
         return None
 
     try:
+        if provider == "gemini":
+            key = os.getenv("GEMINI_API_KEY", "").strip()
+            if not key:
+                raise RuntimeError("GEMINI_API_KEY is missing")
+            model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            async with httpx.AsyncClient(timeout=35.0) as client:
+                response = await client.post(
+                    url, params={"key": key},
+                    json={"contents": [{"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\\n\\nUser request: " + prompt}]}],
+                          "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}},
+                )
+                response.raise_for_status()
+                data = response.json()
+            parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+            raw = next((part.get("text", "") for part in parts if part.get("text")), "")
+            return ParsedRule(**json.loads(raw))
+
+        if provider == "groq":
+            key = os.getenv("GROQ_API_KEY", "").strip()
+            if not key:
+                raise RuntimeError("GROQ_API_KEY is missing")
+            async with httpx.AsyncClient(timeout=35.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+                          "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                                       {"role": "user", "content": prompt}],
+                          "temperature": 0, "response_format": {"type": "json_object"}},
+                )
+                response.raise_for_status()
+                raw = response.json()["choices"][0]["message"]["content"]
+            return ParsedRule(**json.loads(raw))
+
         if provider == "openai":
             from openai import AsyncOpenAI
 
@@ -224,7 +273,25 @@ async def llm_parse(prompt: str) -> Optional[ParsedRule]:
             return ParsedRule(**json.loads(raw))
 
     except Exception as exc:
-        logger.warning("LLM parse failed: %s", exc)
+        logger.warning("Primary LLM parse failed: %s", exc)
+        # If Gemini parsing is temporarily unavailable, Groq can still interpret
+        # the user's language. Live web research remains Gemini-grounded.
+        if provider == "gemini" and os.getenv("GROQ_API_KEY", "").strip():
+            try:
+                async with httpx.AsyncClient(timeout=35.0) as client:
+                    response = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}"},
+                        json={"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+                              "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                                           {"role": "user", "content": prompt}],
+                              "temperature": 0, "response_format": {"type": "json_object"}},
+                    )
+                    response.raise_for_status()
+                    raw = response.json()["choices"][0]["message"]["content"]
+                return ParsedRule(**json.loads(raw))
+            except Exception as fallback_exc:
+                logger.warning("Groq parser fallback failed: %s", fallback_exc)
     return None
 
 

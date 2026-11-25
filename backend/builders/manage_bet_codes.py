@@ -20,7 +20,7 @@ class ManageBetCodesBuilder:
         self.key = os.getenv("MANAGE_BET_CODES_API_KEY", "")
         self.bookmaker = bookmaker or os.getenv("MANAGE_BET_CODES_BOOKMAKER", "sportybet")
         self.timeout = float(os.getenv("MANAGE_BET_CODES_TIMEOUT_SECONDS", "35"))
-        self.require_calibrated = os.getenv("T24_REQUIRE_CALIBRATED", "true").lower() in ("1", "true", "yes")
+        self.require_calibrated = os.getenv("T24_REQUIRE_CALIBRATED", "false").lower() in ("1", "true", "yes")
         if not self.key:
             raise RuntimeError("MANAGE_BET_CODES_API_KEY is required")
 

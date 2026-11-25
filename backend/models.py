@@ -15,6 +15,7 @@ class Direction(str, Enum):
 
 class SelectionTarget(str, Enum):
     LOWEST_PROBABILITY_TEAM = "lowest_probability_team"
+    HIGHEST_PROBABILITY_TEAM = "highest_probability_team"
     HOME = "home"
     AWAY = "away"
     BOTH = "both"
@@ -33,6 +34,7 @@ class ParsedRule(BaseModel):
     min_probability: float = Field(default=0.75, ge=0.0, le=1.0)
     max_legs: int = Field(default=1, ge=1, le=20)
     match_status: MatchStatus = MatchStatus.UPCOMING
+    date_scope: str = "any"
 
     @field_validator("time_window")
     @classmethod
@@ -103,6 +105,8 @@ class Selection(BaseModel):
     raw_probability: Optional[float] = None
     calibrated_probability: Optional[float] = None
     model_version: str = "tactica24-poisson-v2"
+    evidence_sources: list[dict[str, str]] = Field(default_factory=list)
+    evidence_summary: Optional[str] = None
     model_config = {"populate_by_name": True}
 
 class ScoutRequest(BaseModel):
@@ -112,6 +116,9 @@ class ScoutResponse(BaseModel):
     selections: list[Selection]
     scanned_fixtures: int
     provider: str
+    research_summary: Optional[str] = None
+    evidence_sources: list[dict[str, str]] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
 
 class GenerateCodeRequest(BaseModel):
     selections: list[Selection]

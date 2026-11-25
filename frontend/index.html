@@ -147,7 +147,7 @@
 
   <script>
     // Same-origin when served by FastAPI; override via localStorage if needed
-    const API = localStorage.getItem('tactica24_api') || window.location.origin;
+    const API = window.location.origin;
     const conversationHistory = [];
 
     fetch(`${API}/api/health`).then(r => r.json()).then(d => {

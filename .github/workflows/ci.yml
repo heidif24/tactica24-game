@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, operationalize/accuracy-and-safety, feature/conversational-mbc-engine]
+    branches: [main, operationalize/accuracy-and-safety, feature/conversational-mbc-engine, feature/gemini-groq-web-research]
   pull_request:
     branches: [main]
 jobs:

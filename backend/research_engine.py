@@ -175,7 +175,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
             selections=[], scanned_fixtures=0, provider=provider_used,
             research_summary="No verifiable web sources were returned; no selections generated.",
             evidence_sources=[],
-            limitations=["Google Search grounding returned no source URLs."],
+            limitations=[f"{provider_used} returned no source URLs."],
         )
 
     selections: list[Selection] = []
@@ -244,7 +244,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 calibration_status="uncalibrated",
                 calibration_samples=0,
                 raw_probability=round(probability, 4),
-                model_version="tactica24-gemini-grounded-v1",
+                model_version=f"tactica24-{provider_used}-v1",
                 evidence_sources=matched_sources,
                 evidence_summary=str(report.get("summary") or ""),
             ))
@@ -257,7 +257,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
     return ScoutResponse(
         selections=selections[:rule.max_legs],
         scanned_fixtures=len(selections),
-        provider="gemini_google_search",
+        provider=provider_used,
         research_summary=str(report.get("summary") or "Grounded web research completed."),
         evidence_sources=sources,
         limitations=limitations,

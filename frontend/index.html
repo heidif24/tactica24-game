@@ -179,7 +179,10 @@
       feed.scrollTop = feed.scrollHeight;
     }
 
-    function escapeHtml(value) { return String(value ?? '').replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[ch])); }
+    function escapeHtml(value) {
+      const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+      return String(value ?? '').replace(/[&<>"']/g, ch => entities[ch]);
+    }
 
     function statusBadge(status) {
       const map = {

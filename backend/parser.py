@@ -192,7 +192,9 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
 
 async def llm_parse(prompt: str) -> Optional[ParsedRule]:
     """Try OpenAI / Anthropic structured parse. Returns None on any failure."""
-    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    provider = os.getenv("LLM_PROVIDER", "auto").lower()
+    if provider in ("auto", ""):
+        provider = "gemini"
     if provider == "none":
         return None
 

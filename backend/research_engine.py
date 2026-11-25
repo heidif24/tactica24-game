@@ -126,27 +126,73 @@ async def _gemini_grounded_research(rule: ParsedRule) -> tuple[dict[str, Any], l
     sources = _grounding_sources(candidate)
     return parsed, sources
 
+def _groq_sources(message: dict[str, Any], raw: str, parsed: dict[str, Any]) -> list[dict[str, str]]:
+    """Collect URLs from Groq's cited annotations and the model's JSON payload."""
+    found: dict[str, str] = {}
+
+    def add(value: Any, title: Any = None) -> None:
+        if isinstance(value, dict):
+            url = value.get("url") or value.get("uri") or value.get("source_url")
+            title = value.get("title") or title
+        else:
+            url = value
+        if isinstance(url, str) and url.startswith(("https://", "http://")):
+            found.setdefault(url, str(title or "Groq browser-search source"))
+
+    for item in parsed.get("candidates") or []:
+        for value in item.get("source_urls") or []:
+            add(value)
+    for value in parsed.get("source_urls") or []:
+        add(value)
+    for citation in message.get("annotations") or []:
+        add(citation.get("url_citation") or citation.get("url") or citation.get("citation") or citation,
+            citation.get("title"))
+    for citation in message.get("citations") or []:
+        add(citation)
+    # Some Groq responses render cited URLs directly in the answer.
+    for url in re.findall(r"https?://[^\\s\\]\\)}>\\\"]+", raw):
+        add(url.rstrip(".,;:"))
+    return [{"title": title, "url": url} for url, title in found.items()]
+
+
 async def _groq_browser_research(rule: ParsedRule) -> tuple[dict[str, Any], list[dict[str, str]]]:
     """Use Groq GPT-OSS browser search as an independent live-research fallback."""
     key = os.getenv("GROQ_API_KEY", "").strip()
-    if not key: raise RuntimeError("GROQ_API_KEY is missing")
+    if not key:
+        raise RuntimeError("GROQ_API_KEY is missing")
     model = os.getenv("GROQ_RESEARCH_MODEL", os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")).strip()
-    prompt = _research_prompt(rule) + "\nUse browser_search. Include literal https:// source_urls for pages visited, at least one per candidate. Return only the requested JSON."
-    payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_completion_tokens": 6000, "tool_choice": "required", "tools": [{"type": "browser_search"}]}
+    prompt = _research_prompt(rule) + """
+You MUST use the browser_search tool to research current fixtures and evidence.
+Return one valid JSON object matching the requested schema. Put the exact source
+URLs supporting EACH candidate in that candidate's source_urls array. Also put
+a concise evidence snippet in evidence. Do not invent URLs or cite pages you did
+not actually consult. If no reliable evidence supports the requested market and
+period, return candidates=[] and explain why in limitations.
+"""
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+        "max_completion_tokens": 6000,
+        "tool_choice": "required",
+        "tools": [{"type": "browser_search"}],
+        "citation_options": "enabled",
+    }
     async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=payload)
-        if response.status_code >= 400: raise RuntimeError(f"Groq browser research failed ({response.status_code}): {response.text[:700]}")
+        response = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json=payload,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Groq browser research failed ({response.status_code}): {response.text[:700]}")
         data = response.json()
     message = ((data.get("choices") or [{}])[0].get("message") or {})
     raw = message.get("content") or ""
-    if not raw: raise RuntimeError("Groq browser search returned no research text")
+    if not raw:
+        raise RuntimeError("Groq browser search returned no research text")
     parsed = _extract_json(raw)
-    urls = []
-    for item in parsed.get("candidates") or []:
-        for value in item.get("source_urls") or []:
-            url = str(value).strip()
-            if url.startswith("https://") and url not in urls: urls.append(url)
-    return parsed, [{"title": "Groq browser-search source", "url": url} for url in urls]
+    return parsed, _groq_sources(message, raw, parsed)
 
 async def research_matches(rule: ParsedRule) -> ScoutResponse:
     """Search the live web, analyse sourced fixtures, and produce auditable picks."""

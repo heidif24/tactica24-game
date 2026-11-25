@@ -1,4 +1,4 @@
-from backend.research_engine import _extract_json, _grounding_sources
+from backend.research_engine import _extract_json, _grounding_sources, _groq_sources
 
 
 def test_extracts_json_from_model_fenced_response():
@@ -46,3 +46,26 @@ def test_mock_stats_provider_requires_explicit_opt_in(monkeypatch):
     from backend.stats_engine import MockStatsProvider, get_provider
     monkeypatch.setenv("STATS_PROVIDER", "mock")
     assert isinstance(get_provider(), MockStatsProvider)
+
+
+def test_groq_sources_reads_message_annotations():
+    message = {
+        "annotations": [
+            {"type": "url_citation", "url_citation": {
+                "url": "https://sports.example/match", "title": "Fixture report"
+            }}
+        ]
+    }
+    sources = _groq_sources(message, "Research summary", {"candidates": []})
+    assert sources == [{
+        "title": "Fixture report",
+        "url": "https://sports.example/match",
+    }]
+
+
+def test_groq_sources_reads_candidate_urls_and_deduplicates():
+    message = {"citations": [{"url": "https://sports.example/stats", "title": "Stats"}]}
+    parsed = {"candidates": [{"source_urls": ["https://sports.example/stats"]}]}
+    sources = _groq_sources(message, "See https://sports.example/stats", parsed)
+    assert len(sources) == 1
+    assert sources[0]["url"] == "https://sports.example/stats"

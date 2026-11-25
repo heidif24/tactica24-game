@@ -174,7 +174,12 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 reasoning=reasoning + (" Evidence: " + "; ".join(map(str, evidence[:5])) if evidence else ""),
                 market_category=rule.market_category,
                 sub_market=rule.sub_market,
-                bookmaker_outcome=str(item.get("outcome") or rule.outcome or rule.direction.value),
+                bookmaker_outcome=(
+                    rule.direction.value if rule.market_category in ("corners", "goals")
+                    else (rule.outcome or str(item.get("outcome") or "")).lower()
+                    if rule.market_category in ("btts", "double_chance")
+                    else str(item.get("selection_side") or rule.selection_target.value).lower()
+                ),
                 calibration_status="uncalibrated",
                 calibration_samples=0,
                 raw_probability=round(probability, 4),

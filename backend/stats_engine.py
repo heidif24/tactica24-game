@@ -290,6 +290,7 @@ class ApiFootballProvider(StatsProvider):
 
         fixtures: list[Fixture] = []
         seen: set[str] = set()
+        skipped_stats = 0
 
         for row in rows[:40]:  # hard cap for rate limits
             fi = row.get("fixture") or {}
@@ -317,8 +318,21 @@ class ApiFootballProvider(StatsProvider):
             league_id = int(league.get("id") or 0)
             if not league_id:
                 raise RuntimeError("API-Football fixture is missing its league identifier")
-            h_stats = await self._team_corner_rates(int(home_id), int(season), league_id)
-            a_stats = await self._team_corner_rates(int(away_id), int(season), league_id)
+            # A fixture can be valid even when one participant has no
+            # season statistics in this competition (newly promoted teams,
+            # cup fixtures, incomplete provider coverage). Skip that fixture
+            # and continue scanning; never abort the entire search or invent
+            # replacement averages.
+            try:
+                h_stats = await self._team_corner_rates(int(home_id), int(season), league_id)
+                a_stats = await self._team_corner_rates(int(away_id), int(season), league_id)
+            except (RuntimeError, ValueError, TypeError) as exc:
+                skipped_stats += 1
+                logger.warning(
+                    "Skipping fixture %s (%s vs %s): unusable season statistics: %s",
+                    fid, home_name, away_name, exc,
+                )
+                continue
 
             # Preserve each team's own against-rate. The previous cross-fill
             # accidentally substituted the opponent's attacking rate.
@@ -347,9 +361,18 @@ class ApiFootballProvider(StatsProvider):
             ))
 
         if not fixtures:
+            if skipped_stats:
+                raise RuntimeError(
+                    f"API-Football returned fixtures, but none had usable season statistics "
+                    f"({skipped_stats} fixture(s) skipped). Check competition/season coverage "
+                    "or broaden the fixture search; no demonstration data was substituted."
+                )
             raise RuntimeError("API-Football returned no fixtures; refusing to substitute demonstration fixtures")
 
-        logger.info("API-Football: %d fixtures loaded", len(fixtures))
+        logger.info(
+            "API-Football: %d fixtures loaded; %d skipped for missing season statistics",
+            len(fixtures), skipped_stats,
+        )
         return fixtures
 
 

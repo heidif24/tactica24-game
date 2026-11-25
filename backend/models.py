@@ -34,6 +34,7 @@ class ParsedRule(BaseModel):
     min_probability: float = Field(default=0.75, ge=0.0, le=1.0)
     max_legs: int = Field(default=1, ge=1, le=20)
     match_status: MatchStatus = MatchStatus.UPCOMING
+    date_scope: str = "any"
 
     @field_validator("time_window")
     @classmethod

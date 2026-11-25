@@ -552,10 +552,10 @@ async def scout_matches(rule: ParsedRule) -> ScoutResponse:
             # Cards and other categories require observed event-level data.
             continue
 
-        if rule.selection_target == SelectionTarget.HIGHEST_PROBABILITY_TEAM and computed:
+        if rule.selection_target in (SelectionTarget.HIGHEST_PROBABILITY_TEAM, SelectionTarget.LOWEST_PROBABILITY_TEAM) and computed:
+            # Probability is for the requested market outcome (Over or Under),
+            # so choose the side with the highest probability of that outcome.
             computed = [max(computed, key=lambda item: item[3])]
-        elif rule.selection_target == SelectionTarget.LOWEST_PROBABILITY_TEAM and computed:
-            computed = [min(computed, key=lambda item: item[3])]
 
         for side, team_name, lam, raw_prob, outcome in computed:
             if raw_prob < rule.min_probability:

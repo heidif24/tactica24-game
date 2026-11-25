@@ -1,89 +1,55 @@
 # Tactica24
 
-Conversational football analysis, exact bookmaker-market discovery, historical probability calibration, and verified booking-code creation.
+Conversational football research, evidence-backed market analysis, exact bookmaker-market verification, and booking-code creation.
 
-## Deployment
+## Architecture
 
-This repository is a Python FastAPI application. Vercel's FastAPI runtime entrypoint is declared in the root `pyproject.toml`:
+1. **Understand the request** — Gemini parses ordinary language into a structured market request. Groq can be selected as an alternative language-model parser.
+2. **Research online** — Gemini uses Google Search grounding to find current fixtures and public football evidence. Source URLs are returned with the analysis.
+3. **Analyse** — the model ranks only candidates supported by retrieved evidence. It must preserve the requested market, line and time interval. Unsupported minute-specific claims are rejected.
+4. **Verify bookmaker market** — Manage Bet Codes searches the selected bookmaker, discovers the exact event and market, resolves the pick, and only returns a code after provider verification.
 
-    [tool.vercel]
-    entrypoint = "backend.main:app"
+API-Football and FootyStats are not used by the active pipeline. No demo fixtures or mock statistics are substituted when live research fails.
 
-The FastAPI application serves the dashboard at `/` and API endpoints under `/api`. Vercel uses the root `requirements.txt` to install Python dependencies.
+## Environment variables
 
-## What is implemented
+Copy `.env.example` and set the secrets in Vercel Project Settings → Environment Variables:
 
-- Conversational request parsing with OpenAI/Anthropic support and deterministic fallback.
-- Supported statistical families: corners (full-match and requested intervals), full-match goals, BTTS, 1X2 and double chance.
-- Minute-level goal, BTTS, result and card markets are not inferred from full-match aggregate rates.
-- API-Football and FootyStats fixture/statistics adapters; missing statistics are not replaced with fabricated team averages.
-- Manage Bet Codes market discovery using bookmaker capability catalogues, event search, event-specific markets or canonical market catalogue fallback.
-- Strict selection resolution, strict booking, odds-change rejection, and provider load-back verification.
-- A code is returned only if every requested selection is resolved, booked and provider-verified.
-- Conversational SSE endpoint at `POST /api/chat`, with recent prompt context.
-- GitHub Actions checks Python compilation and automated tests.
+- `LLM_PROVIDER=gemini`
+- `GEMINI_API_KEY`, `GEMINI_MODEL=gemini-2.5-flash`
+- `GROQ_API_KEY`, `GROQ_MODEL=openai/gpt-oss-120b`
+- `SLIP_BUILDER=manage_bet_codes`
+- `MANAGE_BET_CODES_BASE_URL=https://api.managebetcodes.app/v1`
+- `MANAGE_BET_CODES_API_KEY`
+- `MANAGE_BET_CODES_BOOKMAKER=sportybet` (or `onexbet`)
+- `MANAGE_BET_CODES_TIMEOUT_SECONDS=45`
 
-## Probability calibration is required for live booking
+Gemini is the required live web-research provider. Groq is an alternative parser/analysis model; it is not treated as a live web source by itself. Keep all keys server-side and never commit them.
 
-Raw Poisson outputs are model estimates, not proven hit rates. Live code creation is blocked by default unless the requested market/period has enough timestamped out-of-sample calibration evidence.
+## Probability and safety
 
-Set `T24_CALIBRATION_FILE=data/historical_outcomes.csv` and provide a CSV with these columns:
+AI-generated probabilities are estimates, not calibrated historical hit rates or guarantees. The default `T24_REQUIRE_CALIBRATED=false` allows estimates to proceed to exact bookmaker market verification; the UI and API retain the uncalibrated status. Set it to `true` only when a sufficient timestamped out-of-sample dataset exists for the exact market and period.
 
-    market_category,sub_market,time_window,model_version,predicted_probability,outcome,predicted_at,kickoff_at,settled_at
+A booking code is not produced unless the requested event and exact market are discovered and verified by Manage Bet Codes. No market or time period is silently substituted. Manage Bet Codes creates shareable booking codes; it does not place stakes or access bookmaker wallets.
 
-Each row must be a genuine out-of-sample forecast recorded before kick-off, with the same model_version as the running model (currently tactica24-poisson-v2). Outcomes are 1 for the selected event occurring and 0 otherwise. kickoff_at must fall after predicted_at and before settled_at. The default minimum is 200 observations for the exact market/sub-market/period and 30 observations in the probability bin. Tactica24 uses a conservative 95% Wilson lower confidence bound rather than treating the raw hit rate as certainty.
-
-A blank schema template is included at `data/historical_outcomes.template.csv`. It is not historical data and does not make the app live-ready. Do not fill it with invented or retrospectively fitted predictions.
-
-## Manage Bet Codes configuration
-
-Create an API key at https://managebetcodes.app/dashboard/api. The key must be stored only as a server-side Vercel environment variable.
-
-    SLIP_BUILDER=manage_bet_codes
-    MANAGE_BET_CODES_BASE_URL=https://api.managebetcodes.app/v1
-    MANAGE_BET_CODES_API_KEY=mbc_live_your_key
-    MANAGE_BET_CODES_BOOKMAKER=sportybet
-    MANAGE_BET_CODES_TIMEOUT_SECONDS=35
-    T24_REQUIRE_CALIBRATED=true
-    T24_CALIBRATION_FILE=data/historical_outcomes.csv
-
-For live fixtures and team statistics:
-
-    STATS_PROVIDER=api_football
-    API_FOOTBALL_KEY=your_api_football_key
-    API_FOOTBALL_BASE=https://v3.football.api-sports.io
-
-For conversational AI:
-
-    LLM_PROVIDER=openai
-    OPENAI_API_KEY=your_openai_api_key
-
-Supported bookmaker codes and market availability are read from Manage Bet Codes' live catalogue. Do not assume every bookmaker exposes event-market details or every market. A missing/ambiguous market is rejected.
-
-## API endpoints
+## API
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/health` | Provider, AI and calibration readiness |
+| `GET /api/health` | AI, research and booking-provider readiness |
 | `POST /api/parse-rule` | Parse a natural-language request |
-| `POST /api/scout-matches` | Statistical analysis and ranking |
-| `POST /api/generate-code` | Build a code from explicit selections |
+| `POST /api/scout-matches` | Grounded web research and analysis |
+| `POST /api/generate-code` | Verify and build a code from explicit selections |
 | `POST /api/chat` | Conversational streaming pipeline |
 | `POST /api/pipeline` | Pipeline alias |
 
-## Run locally
+## Local development
 
-    python -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-The default provider settings are mock/demo. Mock mode never produces a bookmaker code.
-
-## Important boundaries
-
-- Manage Bet Codes creates shareable booking codes; it does not place a stake or access bookmaker wallets.
-- No market is silently substituted.
-- No incomplete or unverified code is presented as successful.
-- Historical calibration is market- and period-specific. A calibrated full-match goals profile does not validate first-five-minute corners.
-- Betting outcomes are uncertain; no probability or selection guarantees a win.
+The live pipeline requires a valid Gemini key and Manage Bet Codes key. No API-Football key or Neon database is required for a fresh search. Historical tracking and calibration can be added separately.

@@ -112,7 +112,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     elif "corner" in text:
         category = "corners"
 
-    target = SelectionTarget.LOWEST_PROBABILITY_TEAM
+    target = SelectionTarget.TOTAL if category == "cards" else SelectionTarget.LOWEST_PROBABILITY_TEAM
     if category == "result":
         if "draw" in text:
             target, outcome = SelectionTarget.DRAW, "Draw"
@@ -124,7 +124,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         target = SelectionTarget.BOTH
     elif category == "double_chance":
         target = SelectionTarget.BOTH
-    elif "total" in text or category == "goals":
+    elif "total" in text or category in ("goals", "cards"):
         target = SelectionTarget.TOTAL
     elif re.search(r"\bteam\s*1\b|\bteam\s*one\b", text) or ("home" in text and "away" not in text):
         target = SelectionTarget.HOME
@@ -144,7 +144,10 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     elif category == "result":
         sub_market = "interval_result" if explicit_period else "match_result"
     else:
-        sub_market = "interval_cards" if explicit_period else "total_cards"
+        if target == SelectionTarget.TOTAL:
+            sub_market = "total_interval_cards" if explicit_period else "total_cards"
+        else:
+            sub_market = "team_interval_cards" if explicit_period else "team_cards"
     if not explicit_period and category != "corners":
         window = "full_match"
 
@@ -184,6 +187,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         "min_probability": min_prob,
         "max_legs": max_legs,
         "match_status": status,
+        "date_scope": "today" if re.search(r"\btoday\b", text) else "any",
     }
     if overrides:
         data.update({k: v for k, v in overrides.items() if v is not None})

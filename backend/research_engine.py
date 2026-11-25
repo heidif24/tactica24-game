@@ -101,7 +101,7 @@ async def _gemini_grounded_research(rule: ParsedRule) -> tuple[dict[str, Any], l
     key = os.getenv("GEMINI_API_KEY", "").strip()
     if not key:
         raise RuntimeError("GEMINI_API_KEY is missing. Add it to the Vercel server environment.")
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
         "contents": [{"role": "user", "parts": [{"text": _research_prompt(rule)}]}],
@@ -126,14 +126,53 @@ async def _gemini_grounded_research(rule: ParsedRule) -> tuple[dict[str, Any], l
     sources = _grounding_sources(candidate)
     return parsed, sources
 
+async def _groq_browser_research(rule: ParsedRule) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Use Groq GPT-OSS browser search as an independent live-research fallback."""
+    key = os.getenv("GROQ_API_KEY", "").strip()
+    if not key: raise RuntimeError("GROQ_API_KEY is missing")
+    model = os.getenv("GROQ_RESEARCH_MODEL", os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")).strip()
+    prompt = _research_prompt(rule) + "\nUse browser_search. Include literal https:// source_urls for pages visited, at least one per candidate. Return only the requested JSON."
+    payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_completion_tokens": 6000, "tool_choice": "required", "tools": [{"type": "browser_search"}]}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=payload)
+        if response.status_code >= 400: raise RuntimeError(f"Groq browser research failed ({response.status_code}): {response.text[:700]}")
+        data = response.json()
+    message = ((data.get("choices") or [{}])[0].get("message") or {})
+    raw = message.get("content") or ""
+    if not raw: raise RuntimeError("Groq browser search returned no research text")
+    parsed = _extract_json(raw)
+    urls = []
+    for item in parsed.get("candidates") or []:
+        for value in item.get("source_urls") or []:
+            url = str(value).strip()
+            if url.startswith("https://") and url not in urls: urls.append(url)
+    return parsed, [{"title": "Groq browser-search source", "url": url} for url in urls]
 
 async def research_matches(rule: ParsedRule) -> ScoutResponse:
     """Search the live web, analyse sourced fixtures, and produce auditable picks."""
-    report, sources = await _gemini_grounded_research(rule)
+    failures: list[str] = []
+    report = None
+    sources: list[dict[str, str]] = []
+    providers = []
+    if os.getenv("GEMINI_API_KEY", "").strip(): providers.append(("gemini_google_search", _gemini_grounded_research))
+    if os.getenv("GROQ_API_KEY", "").strip(): providers.append(("groq_browser_search", _groq_browser_research))
+    if not providers: raise RuntimeError("No live research provider is configured. Add GEMINI_API_KEY or GROQ_API_KEY.")
+    provider_used = ""
+    for provider_name, research_fn in providers:
+        try:
+            candidate_report, candidate_sources = await research_fn(rule)
+            if candidate_sources:
+                report, sources, provider_used = candidate_report, candidate_sources, provider_name
+                break
+            failures.append(f"{provider_name}: no verifiable source URLs returned")
+        except Exception as exc:
+            logger.warning("%s research attempt failed: %s", provider_name, exc)
+            failures.append(f"{provider_name}: {exc}")
+    if report is None: raise RuntimeError("All configured live research providers failed: " + " | ".join(failures))
     if not sources:
         logger.warning("Gemini response had no Google Search grounding sources")
         return ScoutResponse(
-            selections=[], scanned_fixtures=0, provider="gemini_google_search",
+            selections=[], scanned_fixtures=0, provider=provider_used,
             research_summary="No verifiable web sources were returned; no selections generated.",
             evidence_sources=[],
             limitations=["Google Search grounding returned no source URLs."],
@@ -154,8 +193,10 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 continue
             if rule.match_status.value == "live" and (match_status != "live" or kickoff_dt > now):
                 continue
-            if rule.match_status.value == "upcoming_or_live" and match_status not in ("upcoming", "live"):
-                continue
+            if rule.match_status.value == "upcoming_or_live":
+                if match_status not in ("upcoming", "live"): continue
+                if match_status == "upcoming" and kickoff_dt <= now: continue
+                if match_status == "live" and kickoff_dt > now: continue
             evidence = item.get("evidence") or []
             candidate_urls = [str(url) for url in (item.get("source_urls") or [])]
             matched_sources = [source for source in sources if source["url"] in allowed_urls and source["url"] in candidate_urls]
@@ -166,7 +207,10 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 continue
             if not 0 < probability <= 1 or probability < rule.min_probability:
                 continue
-            # Preserve the exact requested market and interval; reject model drift.
+            # Preserve fixed sides and exact requested market/interval.
+            requested_side = rule.selection_target.value
+            candidate_side = str(item.get("selection_side") or requested_side).lower()
+            if requested_side in ("home", "away", "draw") and candidate_side != requested_side: continue
             if str(item.get("market_category", rule.market_category)).lower() != rule.market_category.lower():
                 continue
             if str(item.get("time_window", rule.time_window)) != rule.time_window:
@@ -180,7 +224,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                 away_team=away,
                 kickoff_utc=kickoff,
                 league=str(item.get("league") or "Competition not stated"),
-                selection_side=str(item.get("selection_side") or rule.selection_target.value),
+                selection_side=candidate_side,
                 team_name=str(item.get("team_name") or f"{home} vs {away}"),
                 time_window=rule.time_window,
                 line=rule.line,
@@ -195,7 +239,7 @@ async def research_matches(rule: ParsedRule) -> ScoutResponse:
                     rule.direction.value if rule.market_category in ("corners", "goals")
                     else (rule.outcome or str(item.get("outcome") or "")).lower()
                     if rule.market_category in ("btts", "double_chance")
-                    else str(item.get("selection_side") or rule.selection_target.value).lower()
+                    else candidate_side
                 ),
                 calibration_status="uncalibrated",
                 calibration_samples=0,

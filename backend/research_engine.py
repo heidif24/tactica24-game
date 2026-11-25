@@ -104,7 +104,7 @@ async def _gemini_grounded_research(rule: ParsedRule) -> tuple[dict[str, Any], l
     payload = {
         "contents": [{"role": "user", "parts": [{"text": _research_prompt(rule)}]}],
         "tools": [{"google_search": {}}],
-        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+        "generationConfig": {"temperature": 0.2},
     }
     async with httpx.AsyncClient(timeout=90.0) as client:
         response = await client.post(url, params={"key": key}, json=payload)

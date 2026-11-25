@@ -332,11 +332,14 @@
                 showCode(event.detail.booking_code, event.detail.screenshot_b64);
               } else {
                 const logs = (event.detail?.logs || []).join(' ').toLowerCase();
-                const reason = logs.includes('calibration')
-                  ? 'Historical out-of-sample probability calibration is not ready for this market and period.'
-                  : logs.includes('market') || logs.includes('resolve')
+                const calibrationBlocked = logs.includes('booking blocked: probability calibration is required');
+                const legNote = (event.detail?.legs || []).map(l => l.market_note).find(Boolean);
+                const reason = calibrationBlocked
+                  ? 'Booking was blocked by the historical calibration requirement.'
+                  : legNote || (logs.includes('market') || logs.includes('resolve')
                     ? 'The exact requested market could not be matched and verified at the selected bookmaker. No substitute market was used.'
-                    : 'The booking provider did not verify a complete code. No code was issued.';
+                    : 'The booking provider did not verify a complete code. No code was issued.');
+                if (event.detail?.legs?.length) renderLegs(event.detail.legs);
                 document.getElementById('noCodeReason').textContent = reason;
                 document.getElementById('noCodeCard').classList.remove('hidden');
               }

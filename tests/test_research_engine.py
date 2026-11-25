@@ -76,3 +76,14 @@ def test_groq_sources_extracts_urls_from_answer_text():
     sources = _groq_sources({}, "Evidence: https://league.example/fixtures?id=4.", {"candidates": []})
     assert sources
     assert sources[0]["url"] == "https://league.example/fixtures?id=4"
+
+def test_groq_sources_reads_nested_executed_tool_urls():
+    message = {"executed_tools": [{
+        "type": "browser_search",
+        "results": [{"url": "https://league.example/fixtures", "title": "Fixtures"}],
+    }]}
+    sources = _groq_sources(message, "Research summary", {"candidates": []})
+    assert sources == [{
+        "title": "Fixtures",
+        "url": "https://league.example/fixtures",
+    }]

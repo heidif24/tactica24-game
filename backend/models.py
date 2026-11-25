@@ -104,6 +104,8 @@ class Selection(BaseModel):
     raw_probability: Optional[float] = None
     calibrated_probability: Optional[float] = None
     model_version: str = "tactica24-poisson-v2"
+    evidence_sources: list[dict[str, str]] = Field(default_factory=list)
+    evidence_summary: Optional[str] = None
     model_config = {"populate_by_name": True}
 
 class ScoutRequest(BaseModel):
@@ -113,6 +115,9 @@ class ScoutResponse(BaseModel):
     selections: list[Selection]
     scanned_fixtures: int
     provider: str
+    research_summary: Optional[str] = None
+    evidence_sources: list[dict[str, str]] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
 
 class GenerateCodeRequest(BaseModel):
     selections: list[Selection]

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 from typing import Optional
+import httpx
 
 from backend.models import (
     Direction,
@@ -191,11 +192,46 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
 
 async def llm_parse(prompt: str) -> Optional[ParsedRule]:
     """Try OpenAI / Anthropic structured parse. Returns None on any failure."""
-    provider = os.getenv("LLM_PROVIDER", "none").lower()
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
     if provider == "none":
         return None
 
     try:
+        if provider == "gemini":
+            key = os.getenv("GEMINI_API_KEY", "").strip()
+            if not key:
+                raise RuntimeError("GEMINI_API_KEY is missing")
+            model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            async with httpx.AsyncClient(timeout=35.0) as client:
+                response = await client.post(
+                    url, params={"key": key},
+                    json={"contents": [{"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\\n\\nUser request: " + prompt}]}],
+                          "generationConfig": {"temperature": 0, "responseMimeType": "application/json"}},
+                )
+                response.raise_for_status()
+                data = response.json()
+            parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+            raw = next((part.get("text", "") for part in parts if part.get("text")), "")
+            return ParsedRule(**json.loads(raw))
+
+        if provider == "groq":
+            key = os.getenv("GROQ_API_KEY", "").strip()
+            if not key:
+                raise RuntimeError("GROQ_API_KEY is missing")
+            async with httpx.AsyncClient(timeout=35.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json={"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+                          "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                                       {"role": "user", "content": prompt}],
+                          "temperature": 0, "response_format": {"type": "json_object"}},
+                )
+                response.raise_for_status()
+                raw = response.json()["choices"][0]["message"]["content"]
+            return ParsedRule(**json.loads(raw))
+
         if provider == "openai":
             from openai import AsyncOpenAI
 

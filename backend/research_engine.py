@@ -150,7 +150,7 @@ def _groq_sources(message: dict[str, Any], raw: str, parsed: dict[str, Any]) -> 
     for citation in message.get("citations") or []:
         add(citation)
     # Some Groq responses render cited URLs directly in the answer.
-    for url in re.findall(r"https?://[^\\s<>\\\"]+", raw):
+    for url in re.findall(r"https?://[^\s<>\"']+", raw):
         add(url.rstrip(".,;:"))
     return [{"title": title, "url": url} for url, title in found.items()]
 

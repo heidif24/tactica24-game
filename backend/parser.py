@@ -264,7 +264,25 @@ async def llm_parse(prompt: str) -> Optional[ParsedRule]:
             return ParsedRule(**json.loads(raw))
 
     except Exception as exc:
-        logger.warning("LLM parse failed: %s", exc)
+        logger.warning("Primary LLM parse failed: %s", exc)
+        # If Gemini parsing is temporarily unavailable, Groq can still interpret
+        # the user's language. Live web research remains Gemini-grounded.
+        if provider == "gemini" and os.getenv("GROQ_API_KEY", "").strip():
+            try:
+                async with httpx.AsyncClient(timeout=35.0) as client:
+                    response = await client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}"},
+                        json={"model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+                              "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                                           {"role": "user", "content": prompt}],
+                              "temperature": 0, "response_format": {"type": "json_object"}},
+                    )
+                    response.raise_for_status()
+                    raw = response.json()["choices"][0]["message"]["content"]
+                return ParsedRule(**json.loads(raw))
+            except Exception as fallback_exc:
+                logger.warning("Groq parser fallback failed: %s", fallback_exc)
     return None
 
 

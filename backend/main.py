@@ -101,7 +101,7 @@ async def health():
         "builder_configured": builder_configured,
         "stats_provider": stats_provider,
         "slip_builder": slip_builder,
-        "llm_provider": os.getenv("LLM_PROVIDER", "none"),
+        "llm_provider": llm_provider,
     }
 
 

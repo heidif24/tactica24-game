@@ -96,10 +96,12 @@
         </div>
       </div>
 
-      <button id="runBtn"
+      <button id="runBtn" type="button"
+        onclick="document.getElementById('uiStatus').textContent='Button click detected. Starting…';"
         class="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-terminal-accent text-terminal-bg font-semibold text-sm hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed">
         Analyse & find code
       </button>
+      <p id="uiStatus" role="status" aria-live="polite" class="text-xs text-terminal-muted mt-2">Ready. Enter your request and click Analyse & find code.</p>
     </section>
 
     <section id="progressSection" class="hidden bg-terminal-panel border border-terminal-border rounded-xl p-5">
@@ -227,9 +229,26 @@
       log('Code copied');
     });
 
+    window.addEventListener('error', (event) => {
+      const status = document.getElementById('uiStatus');
+      if (status) status.textContent = 'Frontend error: ' + (event.message || 'JavaScript failed to run');
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const status = document.getElementById('uiStatus');
+      if (status) status.textContent = 'Request error: ' + String(event.reason || 'Unknown error');
+    });
+
     document.getElementById('runBtn').addEventListener('click', async () => {
+      const status = document.getElementById('uiStatus');
+      const progress = document.getElementById('progressSection');
+      progress.classList.remove('hidden');
+      if (status) status.textContent = 'Button click received. Checking your request…';
       const prompt = document.getElementById('prompt').value.trim();
-      if (prompt.length < 5) { log('Prompt too short', true); return; }
+      if (prompt.length < 5) {
+        if (status) status.textContent = 'Please enter at least five characters before starting.';
+        log('Prompt too short', true);
+        return;
+      }
 
       const maxLegs = +document.getElementById('maxLegs').value || 3;
       const minProb = (+document.getElementById('minProb').value || 75) / 100;
@@ -255,7 +274,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt, max_legs: maxLegs, min_probability: minProb, bookmaker, context }),
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) {
+          const bodyText = await resp.text().catch(() => '');
+          throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 240)}`);
+        }
+        if (status) status.textContent = 'Connected. Receiving analysis progress…';
 
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
@@ -274,7 +297,12 @@
             let event;
             try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
-            if (event.error) { log('Request could not be completed. Check the app configuration.', true); setStep(0, 'idle'); break; }
+            if (event.error) {
+              log('Backend error: ' + (event.message || event.error), true);
+              if (status) status.textContent = 'Backend error: ' + (event.message || event.error);
+              setStep(0, 'idle');
+              break;
+            }
             setStep(event.stage, event.done ? 'done' : 'active');
             log(event.stage_name);
             if (event.done) {
@@ -298,9 +326,11 @@
         if (conversationHistory.length > 8) conversationHistory.shift();
       } catch (err) {
         log(String(err), true);
+        if (status) status.textContent = 'Could not complete request: ' + String(err);
       } finally {
         document.getElementById('runBtn').disabled = false;
         document.getElementById('runBtn').textContent = 'Analyse & find code';
+        if (status && status.textContent.startsWith('Connected.')) status.textContent = 'Analysis request finished. Check the progress log and result below.';
       }
     });
   </script>

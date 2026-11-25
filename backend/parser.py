@@ -35,7 +35,7 @@ Convert the user's natural-language request into one JSON object matching this s
   "match_status": "upcoming"
 }
 Allowed market_category values: corners, goals, btts, result, double_chance, cards.
-Allowed selection_target values: lowest_probability_team, home, away, both, draw, total.
+Allowed selection_target values: lowest_probability_team, highest_probability_team, home, away, both, draw, total. Team 1 means the home team; Team 2 means the away team. If the user asks which team is more likely to record an event, use highest_probability_team; if they ask which team is least likely, use lowest_probability_team.
 Use an exact MM:SS-MM:SS interval only when the user requests one; otherwise use full_match.
 For BTTS, set outcome to Yes or No. For 1X2, set outcome to Home, Draw, or Away. For double chance, set outcome to 1X, X2, or 12.
 Never invent fixtures, bookmaker markets, odds, or statistics. Do not convert a requested interval into a full-match market.
@@ -123,10 +123,12 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
         target = SelectionTarget.BOTH
     elif "total" in text or category == "goals":
         target = SelectionTarget.TOTAL
-    elif "home" in text and "away" not in text:
+    elif re.search(r"\bteam\s*1\b|\bteam\s*one\b", text) or ("home" in text and "away" not in text):
         target = SelectionTarget.HOME
-    elif "away" in text and "home" not in text:
+    elif re.search(r"\bteam\s*2\b|\bteam\s*two\b", text) or ("away" in text and "home" not in text):
         target = SelectionTarget.AWAY
+    elif re.search(r"\bmost likely\b|\bmore likely\b|\bhighest probability\b|\bmost probable\b", text):
+        target = SelectionTarget.HIGHEST_PROBABILITY_TEAM
 
     if category == "corners":
         sub_market = "total_interval_corners" if target == SelectionTarget.TOTAL else "team_interval_corners"

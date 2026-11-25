@@ -4,7 +4,7 @@ Conversational football research, evidence-backed market analysis, exact bookmak
 
 ## Architecture
 
-1. **Understand the request** — Gemini parses ordinary language into a structured market request. Groq can be selected as an alternative language-model parser.
+1. **Understand the request** — Gemini parses ordinary language into a structured market request. Groq is used as a fallback language-model parser if Gemini request parsing fails.
 2. **Research online** — Gemini uses Google Search grounding to find current fixtures and public football evidence. Source URLs are returned with the analysis.
 3. **Analyse** — the model ranks only candidates supported by retrieved evidence. It must preserve the requested market, line and time interval. Unsupported minute-specific claims are rejected.
 4. **Verify bookmaker market** — Manage Bet Codes searches the selected bookmaker, discovers the exact event and market, resolves the pick, and only returns a code after provider verification.
@@ -24,7 +24,7 @@ Copy `.env.example` and set the secrets in Vercel Project Settings → Environme
 - `MANAGE_BET_CODES_BOOKMAKER=sportybet` (or `onexbet`)
 - `MANAGE_BET_CODES_TIMEOUT_SECONDS=45`
 
-Gemini is the required live web-research provider. Groq is an alternative parser/analysis model; it is not treated as a live web source by itself. Keep all keys server-side and never commit them.
+Gemini is the required live web-research provider. Groq provides parser fallback; it is not treated as a live web source by itself. Keep all keys server-side and never commit them.
 
 ## Probability and safety
 

@@ -26,7 +26,7 @@ from backend.models import (
     ScoutResponse,
 )
 from backend.parser import parse_rule
-from backend.stats_engine import scout_matches
+from backend.research_engine import research_matches
 
 load_dotenv()
 
@@ -58,14 +58,10 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 @app.get("/api/health")
 async def health():
-    stats_provider = os.getenv("STATS_PROVIDER", "mock").lower()
-    slip_builder = os.getenv("SLIP_BUILDER", "mock").lower()
-    demo_mode = stats_provider == "mock" or slip_builder == "mock"
-    stats_configured = (
-        (stats_provider == "footystats" and bool(os.getenv("FOOTYSTATS_KEY")))
-        or (stats_provider == "api_football" and bool(os.getenv("API_FOOTBALL_KEY")))
-        or stats_provider == "mock"
-    )
+    stats_provider = "gemini_google_search"
+    slip_builder = os.getenv("SLIP_BUILDER", "manage_bet_codes").lower()
+    demo_mode = slip_builder == "mock"
+    stats_configured = bool(os.getenv("GEMINI_API_KEY"))
     builder_configured = (
         slip_builder == "mock"
         or (slip_builder == "api" and bool(os.getenv("BOOKING_API_URL")))
@@ -75,23 +71,20 @@ async def health():
     from backend.calibration import calibration_dataset_status
     calibration_status = calibration_dataset_status()
     calibration_data_ready = calibration_status["ready"]
-    llm_provider = os.getenv("LLM_PROVIDER", "none").lower()
-    llm_configured = (
-        (llm_provider == "openai" and bool(os.getenv("OPENAI_API_KEY")))
-        or (llm_provider == "anthropic" and bool(os.getenv("ANTHROPIC_API_KEY")))
-    )
+    llm_provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    llm_configured = bool(os.getenv("GEMINI_API_KEY")) or bool(os.getenv("GROQ_API_KEY"))
     setup_requirements = []
     if not stats_configured:
-        setup_requirements.append("live statistics API key")
+        setup_requirements.append("Gemini API key for grounded web research")
     if not builder_configured:
         setup_requirements.append("Manage Bet Codes API key")
     if not llm_configured:
-        setup_requirements.append("OpenAI or Anthropic API key")
-    if not calibration_data_ready:
-        setup_requirements.append("out-of-sample calibration dataset")
+        setup_requirements.append("Gemini or Groq API key")
+    if not calibration_data_ready and os.getenv("T24_REQUIRE_CALIBRATED", "false").lower() in ("1", "true", "yes"):
+        setup_requirements.append("out-of-sample calibration dataset (required by current safety setting)")
     operational = (
         not demo_mode and stats_configured and builder_configured
-        and market_mapping_ready and calibration_data_ready and llm_configured
+        and market_mapping_ready and llm_configured
     )
     return {
         "status": "ok" if operational else "degraded",
@@ -128,7 +121,7 @@ async def api_parse_rule(body: ParseRuleRequest):
 @app.post("/api/scout-matches", response_model=ScoutResponse)
 async def api_scout_matches(body: ScoutRequest):
     try:
-        return await scout_matches(body.rule)
+        return await research_matches(body.rule)
     except Exception as exc:
         logger.exception("scout-matches failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -194,24 +187,24 @@ async def api_pipeline(body: PipelineRequest):
             ))
 
             yield _sse(PipelineProgress(
-                stage=2, stage_name="Scanning Fixture Stats",
-                message=f"Analysing {parsed.rule.market_category} markets for {parsed.rule.time_window} using available match statistics…",
+                stage=2, stage_name="Online Web Research",
+                message=f"Searching current public sources and analysing {parsed.rule.market_category} for {parsed.rule.time_window}…",
             ))
             await asyncio.sleep(0.1)
-            scout = await scout_matches(parsed.rule)
+            scout = await research_matches(parsed.rule)
             yield _sse(PipelineProgress(
-                stage=2, stage_name="Scanning Fixture Stats",
+                stage=2, stage_name="Online Web Research",
                 message=(
-                    f"Scanned {scout.scanned_fixtures} fixtures via {scout.provider} → "
-                    f"{len(scout.selections)} qualifying selections"
+                    f"Researched {scout.scanned_fixtures} candidates via {scout.provider}; "
+                    f"{len(scout.selections)} met the request. {scout.research_summary or ''}"
                 ),
-                detail={"selections": [s.model_dump(by_alias=True) for s in scout.selections]},
+                detail={"selections": [s.model_dump(by_alias=True) for s in scout.selections], "sources": scout.evidence_sources, "limitations": scout.limitations},
             ))
 
             if not scout.selections:
                 yield _sse(PipelineProgress(
                     stage=4, stage_name="Complete",
-                    message="No selections met the probability threshold.",
+                    message="No evidence-backed selections met the requested threshold. No demo fixtures or substitute markets were used.",
                     done=True,
                 ))
                 return

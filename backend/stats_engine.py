@@ -469,15 +469,20 @@ class FootyStatsProvider(StatsProvider):
 
 
 def get_provider() -> StatsProvider:
-    name = os.getenv("STATS_PROVIDER", "mock").lower()
-    if name == "api_football":
-        raise RuntimeError(
-            "The API-Football statistics provider has been retired. "
-            "Use the Gemini/Groq grounded web-research pipeline; remove STATS_PROVIDER=api_football."
-        )
-    if name == "footystats":
-        return FootyStatsProvider()
-    return MockStatsProvider()
+    """Legacy local stats engine is disabled for production research.
+
+    Only explicit mock mode is permitted for isolated development/tests.
+    Live analysis must use backend.research_engine, which requires grounded
+    Gemini/Groq web evidence and never substitutes mock fixtures.
+    """
+    name = os.getenv("STATS_PROVIDER", "disabled").lower()
+    if name == "mock":
+        return MockStatsProvider()
+    raise RuntimeError(
+        "The legacy fixture-statistics engine is disabled. "
+        "Use the Gemini/Groq grounded web-research pipeline; no API-Football, "
+        "FootyStats or demonstration statistics are used for live analysis."
+    )
 
 
 # ── Scouting engine ─────────────────────────────────────────────────────────

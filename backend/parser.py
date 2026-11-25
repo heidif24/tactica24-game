@@ -203,7 +203,7 @@ async def llm_parse(prompt: str) -> Optional[ParsedRule]:
             key = os.getenv("GEMINI_API_KEY", "").strip()
             if not key:
                 raise RuntimeError("GEMINI_API_KEY is missing")
-            model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             async with httpx.AsyncClient(timeout=35.0) as client:
                 response = await client.post(

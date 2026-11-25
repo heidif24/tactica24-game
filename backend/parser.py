@@ -90,7 +90,7 @@ def deterministic_parse(prompt: str, overrides: Optional[dict] = None) -> Parsed
     direction = Direction.UNDER
     if "over" in text and "under" not in text:
         direction = Direction.OVER
-    elif re.search(r"\\bmost likely\\b|\\bmore likely\\b|\\bhighest probability\\b|\\bmost probable\\b", text) and category == "corners":
+    elif re.search(r"\bmost likely\b|\bmore likely\b|\bhighest probability\b|\bmost probable\b", text):
         direction = Direction.OVER
 
     # Market family and requested outcome.

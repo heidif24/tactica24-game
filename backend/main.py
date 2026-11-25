@@ -88,6 +88,7 @@ async def health():
     )
     return {
         "status": "ok" if operational else "degraded",
+        "pipeline_version": "2026-11-25-gemini-groq-web-research",
         "operational": operational,
         "market_mapping_ready": market_mapping_ready,
         "calibration_data_ready": calibration_data_ready,

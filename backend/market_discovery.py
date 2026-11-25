@@ -178,7 +178,13 @@ class ManageBetCodesMarketDiscovery:
         if category == "double_chance":
             return "double chance" in text
         if category == "cards":
-            return "card" in text
+            if "card" not in text:
+                return False
+            if "total_interval_cards" in sub_market or "total_cards" in sub_market:
+                return "team" not in text and "player" not in text
+            if "team_interval_cards" in sub_market or "team_cards" in sub_market:
+                return "team" in text or "home" in text or "away" in text
+            return True
         return False
 
     async def discover(self, selection, bookmaker: str) -> dict | None:
